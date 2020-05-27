@@ -70,6 +70,7 @@ viewReady : Config -> Element Msg
 viewReady cfg =
   column [ Element.width fill
          , Element.height fill
+         , printLog "Servers to disable" cfg.hosts
          ]
          [ el [ Element.centerX ]
               ( text "Secure the servers in your project" )
@@ -77,12 +78,12 @@ viewReady cfg =
               , Element.centerY
               ]
               ( button "Restart the servers" button_url (Restart cfg) )
-         , printLog "Servers to disable" cfg.hosts
          ]
 
 viewRestarted : RestartedState -> Element Msg
 viewRestarted state = column [ Element.width fill
                              , Element.height fill
+                             , printLog "Servers restarted" state.log
                              ]
                              [ column [ Element.centerX
                                       , Element.centerY
@@ -90,18 +91,18 @@ viewRestarted state = column [ Element.width fill
                                       [ text ("Restarting " ++ (String.fromInt state.total) ++ " servers.")
                                       , text ("Progress: " ++ (String.fromInt state.count) ++ "/" ++ (String.fromInt state.total))
                                       ]
-                             , printLog "Servers restarted" state.log
                              ]
 
-printLog : String -> List String -> Element Msg
-printLog header msgs = el [ Element.alignBottom
-                          , Font.size 10
-                          ]
-                          ( column []
-                                   [ text "Debug log:\n"
-                                   , text (header ++ ":\n" ++ String.join "\n" msgs)
-                                   ]
-                          )
+printLog : String -> List String -> Element.Attribute Msg
+printLog header msgs = Element.behindContent (el [ Element.alignBottom
+                                                 , Font.size 10
+                                                 ]
+                                                 ( column []
+                                                          [ text "Debug log:\n"
+                                                          , text (header ++ ":\n" ++ String.join "\n" msgs)
+                                                          ]
+                                                 )
+                                             )
 
 button_url : String
 button_url = "red-button.png"
