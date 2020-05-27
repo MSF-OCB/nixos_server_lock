@@ -243,8 +243,8 @@ configDecoder : Decoder Config
 configDecoder = J.map Config << J.field "servers" << J.list << J.map Host <| J.string
 
 restartServer : Host -> Cmd Msg
-restartServer (Host name) = Http.get { --url = UB.relative ["static", "api", "restart"] [UB.string "host" name]
-                                       url = UB.crossOrigin ("https://" ++ name) ["api", "restart"] []
+restartServer (Host name) = Http.get { url = UB.relative ["static", "api", "restart"] [UB.string "host" name]
+                                       --url = UB.crossOrigin ("https://" ++ name) ["api", "restart"] []
                                      -- , body = Http.emptyBody
                                      , expect = Http.expectJson (RestartDoneMsg (Host name)) (restartedDecoder (Host name))
                                      }

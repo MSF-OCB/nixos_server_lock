@@ -4546,6 +4546,23 @@ function _Http_track(router, xhr, tracker)
 	});
 }
 
+function _Url_percentEncode(string)
+{
+	return encodeURIComponent(string);
+}
+
+function _Url_percentDecode(string)
+{
+	try
+	{
+		return $elm$core$Maybe$Just(decodeURIComponent(string));
+	}
+	catch (e)
+	{
+		return $elm$core$Maybe$Nothing;
+	}
+}
+
 
 var _Bitwise_and = F2(function(a, b)
 {
@@ -6237,10 +6254,6 @@ var $author$project$Main$RestartDoneMsg = F2(
 	function (a, b) {
 		return {$: 3, a: a, b: b};
 	});
-var $elm$url$Url$Builder$crossOrigin = F3(
-	function (prePath, pathSegments, parameters) {
-		return prePath + ('/' + (A2($elm$core$String$join, '/', pathSegments) + $elm$url$Url$Builder$toQuery(parameters)));
-	});
 var $author$project$Main$restartedDecoder = function (_v0) {
 	var name = _v0;
 	return A3(
@@ -6252,6 +6265,18 @@ var $author$project$Main$restartedDecoder = function (_v0) {
 		$elm$json$Json$Decode$field('status'),
 		$elm$json$Json$Decode$string);
 };
+var $elm$url$Url$Builder$QueryParameter = F2(
+	function (a, b) {
+		return {$: 0, a: a, b: b};
+	});
+var $elm$url$Url$percentEncode = _Url_percentEncode;
+var $elm$url$Url$Builder$string = F2(
+	function (key, value) {
+		return A2(
+			$elm$url$Url$Builder$QueryParameter,
+			$elm$url$Url$percentEncode(key),
+			$elm$url$Url$percentEncode(value));
+	});
 var $author$project$Main$restartServer = function (_v0) {
 	var name = _v0;
 	return $elm$http$Http$get(
@@ -6260,12 +6285,14 @@ var $author$project$Main$restartServer = function (_v0) {
 				$elm$http$Http$expectJson,
 				$author$project$Main$RestartDoneMsg(name),
 				$author$project$Main$restartedDecoder(name)),
-			aN: A3(
-				$elm$url$Url$Builder$crossOrigin,
-				'https://' + name,
+			aN: A2(
+				$elm$url$Url$Builder$relative,
 				_List_fromArray(
-					['api', 'restart']),
-				_List_Nil)
+					['static', 'api', 'restart']),
+				_List_fromArray(
+					[
+						A2($elm$url$Url$Builder$string, 'host', name)
+					]))
 		});
 };
 var $author$project$Main$doRestart = function (cfg) {
