@@ -108,7 +108,7 @@ gotGif model res = case model.state of
   Restarting state ->
     let newModel = case res of
                      Ok  url -> { model | state = Done state (Maybe.Just url) }
-                     Err err -> appendLog { model | state = Done state Maybe.Nothing} << printError <| err
+                     Err err -> appendLog { model | state = Done state Maybe.Nothing } << printError <| err
     in appendLog newModel "Reached final state."
   _                -> appendLog model "Model in unexpected state, ignoring..."
 
