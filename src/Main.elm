@@ -4,6 +4,9 @@ import Browser
 import Html exposing (Html)
 import Http
 import Json.Decode as J exposing (Decoder)
+import Process as P
+import Url.Builder as UB
+import Task as T
 
 import Element as Element exposing (Element, el, text, image, column, row, fill, rgb255)
 import Element.Background as Background
@@ -18,16 +21,19 @@ main = Browser.element { init = init
                        , view = view
                        }
 
+type Url  = Url  String
+type Host = Host String
+
 type ModelState = Init
                 | Ready Config
                 | Restarting RestartedState
-                | Done RestartedState (Maybe String)
+                | Done RestartedState (Maybe Url)
 
 type alias Model = { state : ModelState
                    , log   : List String
                    }
 
-type alias Config = { hosts : List String }
+type alias Config = { hosts : List Host }
 
 type alias RestartedState = { total : Int
                             , count : Int
@@ -35,8 +41,9 @@ type alias RestartedState = { total : Int
 
 type Msg = ConfigMsg (Result Http.Error Config)
          | RestartMsg Config
-         | RestartDoneMsg (Result Http.Error String)
-         | FoundGifMsg (Result Http.Error String)
+         | RestartDoneMsg Host (Result Http.Error String)
+         | Retry Host
+         | FoundGifMsg (Result Http.Error Url)
 
 printError : Http.Error -> String
 printError error = case error of
@@ -60,16 +67,16 @@ initModel = { state = Init, log = [] }
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case msg of
-  ConfigMsg result      -> (gotConfig model result, Cmd.none)
-  RestartMsg cfg        -> (gotRestart model cfg, doRestart cfg)
-  RestartDoneMsg result -> let newModel = gotRestartDone model result
-                           in (newModel, restartDoneCmd newModel)
-  FoundGifMsg result    -> (gotGif model result, Cmd.none)
+  ConfigMsg result           -> (gotConfig model result, Cmd.none)
+  RestartMsg cfg             -> (gotRestart model cfg, doRestart cfg)
+  RestartDoneMsg host result -> gotRestartDone model host result
+  Retry (Host name)          -> (appendLog model <| "Retrying: " ++ name, restartServer (Host name))
+  FoundGifMsg result         -> (gotGif model result, Cmd.none)
 
 gotConfig : Model -> (Result Http.Error Config) -> Model
 gotConfig model res = case res of
   Ok  cfg -> appendLogs { model | state = Ready cfg }
-                        ("Servers to disable:" :: cfg.hosts)
+                        ("Servers to disable:" :: (List.map (\(Host name) -> name) cfg.hosts))
   Err err -> appendLog model (printError err)
 
 gotRestart : Model -> Config -> Model
@@ -79,20 +86,24 @@ gotRestart model cfg = appendLog { model | state = Restarting { total = List.len
 doRestart : Config -> Cmd Msg
 doRestart cfg = Cmd.batch << (List.map restartServer) <| cfg.hosts
 
-gotRestartDone : Model -> (Result Http.Error String) -> Model
-gotRestartDone model res = case res of
+gotRestartDone : Model -> Host -> (Result Http.Error String) -> (Model, Cmd Msg)
+gotRestartDone model (Host name) res = case res of
   Ok  host_status -> case model.state of
-    Restarting state -> appendLog { model | state = Restarting { state | count = state.count + 1 } }
-                                  host_status
-    _                -> appendLog model "Model in unexpected state, ignoring..."
-  Err err  -> appendLog model << printError <| err
+    Restarting state -> let newModel = appendLog { model | state = Restarting { state | count = state.count + 1 } }
+                                                 host_status
+                        in (newModel, restartDoneCmd newModel)
+    _                -> (appendLog model "Model in unexpected state, ignoring...", Cmd.none)
+  Err err  -> (appendLog model << (\msg -> name ++ ": " ++ msg) << printError <| err, retry (Host name))
+
+retry : Host -> Cmd Msg
+retry host = T.perform (\_ -> Retry host) << P.sleep <| (30 * 1000)
 
 restartDoneCmd : Model -> Cmd Msg
 restartDoneCmd model = case model.state of
   Restarting state -> if state.count == state.total then getRandomCatGif else Cmd.none
   _                -> Cmd.none
 
-gotGif : Model -> (Result Http.Error String) -> Model
+gotGif : Model -> (Result Http.Error Url) -> Model
 gotGif model res = case model.state of
   Restarting state ->
     let newModel = case res of
@@ -139,7 +150,7 @@ viewReady model cfg =
               ( button "Restart the servers" button_url (RestartMsg cfg) )
          ]
 
-viewRestarted : Model -> RestartedState -> Maybe String -> Element Msg
+viewRestarted : Model -> RestartedState -> Maybe Url -> Element Msg
 viewRestarted model state maybe_url =
   column [ Element.width fill
          , Element.height fill
@@ -153,8 +164,11 @@ viewRestarted model state maybe_url =
                   ]
          ]
 
-renderImg : String -> Element Msg
-renderImg url = image [] { src = url, description = "Funny cat, we're done!" }
+renderImg : Url -> Element Msg
+renderImg (Url url) = row [Element.padding 10]
+                          [ text "We are done, have a cat."
+                          , image [] { src = url, description = "Funny cat, we're done!" }
+                          ]
 
 printLog : Model -> Element.Attribute Msg
 printLog model =
@@ -186,33 +200,29 @@ button label src onPress =
         { src = src, description = label }
 
 getConfig : Cmd Msg
-getConfig = Http.get { url = config_url
+getConfig = Http.get { url = UB.relative ["static", "api", "config"] []
                      , expect = Http.expectJson ConfigMsg configDecoder
                      }
 
 configDecoder : Decoder Config
-configDecoder = J.map Config << J.field "servers" << J.list <| J.string
+configDecoder = J.map Config << J.field "servers" << J.list << J.map Host <| J.string
 
-restartServer : String -> Cmd Msg
-restartServer host = Http.get { url = restart_url ++ "?host=" ++ host --"https://" ++ host ++ "/api/restart"
-                              -- , body = Http.emptyBody
-                              , expect = Http.expectJson RestartDoneMsg (restartedDecoder host)
-                              }
+restartServer : Host -> Cmd Msg
+restartServer (Host name) = Http.get { url = UB.relative ["static", "api", "restart"] [UB.string "host" name]
+                                       --url = UB.crossOrigin ("https://" ++ host) ["api", "restart"] []
+                                     -- , body = Http.emptyBody
+                                     , expect = Http.expectJson (RestartDoneMsg (Host name)) (restartedDecoder (Host name))
+                                     }
 
-restartedDecoder : String -> Decoder String
-restartedDecoder host = J.map (\status -> host ++ ": " ++ status) << J.field "status" <| J.string
+restartedDecoder : Host -> Decoder String
+restartedDecoder (Host name) = J.map (\status -> name ++ ": " ++ status) << J.field "status" <| J.string
 
 getRandomCatGif : Cmd Msg
 getRandomCatGif = Http.get { url = "https://api.giphy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC&tag=cat"
                            , expect = Http.expectJson FoundGifMsg gifDecoder
                            }
 
-gifDecoder : Decoder String
-gifDecoder = J.field "data" << J.field "image_url" <| J.string
+gifDecoder : Decoder Url
+gifDecoder = J.field "data" << J.field "image_url" << J.map Url <| J.string
 
-config_url: String
-config_url = "https://gist.githubusercontent.com/R-VdP/4947fc2c79918c2ae02398a326c3bc63/raw/fc4a2cc81f50e426275b7dff87c26d724439720d/config"
-
-restart_url : String
-restart_url = "https://gist.githubusercontent.com/R-VdP/9ef9c09fdc13cdde5c890ef46b0b5b79/raw/34e13504603db179d6531aa6724bee52932332c9/restart"
 

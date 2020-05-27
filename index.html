@@ -4546,6 +4546,23 @@ function _Http_track(router, xhr, tracker)
 	});
 }
 
+function _Url_percentEncode(string)
+{
+	return encodeURIComponent(string);
+}
+
+function _Url_percentDecode(string)
+{
+	try
+	{
+		return $elm$core$Maybe$Just(decodeURIComponent(string));
+	}
+	catch (e)
+	{
+		return $elm$core$Maybe$Nothing;
+	}
+}
+
 
 var _Bitwise_and = F2(function(a, b)
 {
@@ -5370,6 +5387,7 @@ var $author$project$Main$ConfigMsg = function (a) {
 var $author$project$Main$Config = function (hosts) {
 	return {at: hosts};
 };
+var $author$project$Main$Host = $elm$core$Basics$identity;
 var $elm$core$Basics$composeL = F3(
 	function (g, f, x) {
 		return g(
@@ -5382,11 +5400,13 @@ var $author$project$Main$configDecoder = A3(
 	$elm$core$Basics$composeL,
 	A2(
 		$elm$core$Basics$composeL,
-		$elm$json$Json$Decode$map($author$project$Main$Config),
-		$elm$json$Json$Decode$field('servers')),
-	$elm$json$Json$Decode$list,
+		A2(
+			$elm$core$Basics$composeL,
+			$elm$json$Json$Decode$map($author$project$Main$Config),
+			$elm$json$Json$Decode$field('servers')),
+		$elm$json$Json$Decode$list),
+	$elm$json$Json$Decode$map($elm$core$Basics$identity),
 	$elm$json$Json$Decode$string);
-var $author$project$Main$config_url = 'https://gist.githubusercontent.com/R-VdP/4947fc2c79918c2ae02398a326c3bc63/raw/fc4a2cc81f50e426275b7dff87c26d724439720d/config';
 var $elm$json$Json$Decode$decodeString = _Json_runOnString;
 var $elm$http$Http$BadStatus_ = F2(
 	function (a, b) {
@@ -6174,10 +6194,35 @@ var $elm$http$Http$get = function (r) {
 	return $elm$http$Http$request(
 		{b5: $elm$http$Http$emptyBody, aD: r.aD, a6: _List_Nil, cK: 'GET', du: $elm$core$Maybe$Nothing, bE: $elm$core$Maybe$Nothing, aR: r.aR});
 };
+var $elm$url$Url$Builder$toQueryPair = function (_v0) {
+	var key = _v0.a;
+	var value = _v0.b;
+	return key + ('=' + value);
+};
+var $elm$url$Url$Builder$toQuery = function (parameters) {
+	if (!parameters.b) {
+		return '';
+	} else {
+		return '?' + A2(
+			$elm$core$String$join,
+			'&',
+			A2($elm$core$List$map, $elm$url$Url$Builder$toQueryPair, parameters));
+	}
+};
+var $elm$url$Url$Builder$relative = F2(
+	function (pathSegments, parameters) {
+		return _Utils_ap(
+			A2($elm$core$String$join, '/', pathSegments),
+			$elm$url$Url$Builder$toQuery(parameters));
+	});
 var $author$project$Main$getConfig = $elm$http$Http$get(
 	{
 		aD: A2($elm$http$Http$expectJson, $author$project$Main$ConfigMsg, $author$project$Main$configDecoder),
-		aR: $author$project$Main$config_url
+		aR: A2(
+			$elm$url$Url$Builder$relative,
+			_List_fromArray(
+				['static', 'api', 'config']),
+			_List_Nil)
 	});
 var $author$project$Main$Init = {$: 0};
 var $author$project$Main$initModel = {ae: _List_Nil, q: $author$project$Main$Init};
@@ -6188,41 +6233,6 @@ var $elm$core$Platform$Sub$batch = _Platform_batch;
 var $elm$core$Platform$Sub$none = $elm$core$Platform$Sub$batch(_List_Nil);
 var $author$project$Main$subscriptions = function (model) {
 	return $elm$core$Platform$Sub$none;
-};
-var $elm$core$Platform$Cmd$batch = _Platform_batch;
-var $author$project$Main$RestartDoneMsg = function (a) {
-	return {$: 2, a: a};
-};
-var $author$project$Main$restart_url = 'https://gist.githubusercontent.com/R-VdP/9ef9c09fdc13cdde5c890ef46b0b5b79/raw/34e13504603db179d6531aa6724bee52932332c9/restart';
-var $author$project$Main$restartedDecoder = function (host) {
-	return A3(
-		$elm$core$Basics$composeL,
-		$elm$json$Json$Decode$map(
-			function (status) {
-				return host + (': ' + status);
-			}),
-		$elm$json$Json$Decode$field('status'),
-		$elm$json$Json$Decode$string);
-};
-var $author$project$Main$restartServer = function (host) {
-	return $elm$http$Http$get(
-		{
-			aD: A2(
-				$elm$http$Http$expectJson,
-				$author$project$Main$RestartDoneMsg,
-				$author$project$Main$restartedDecoder(host)),
-			aR: $author$project$Main$restart_url + ('?host=' + host)
-		});
-};
-var $author$project$Main$doRestart = function (cfg) {
-	return A3(
-		$elm$core$Basics$composeL,
-		$elm$core$Platform$Cmd$batch,
-		$elm$core$List$map($author$project$Main$restartServer),
-		cfg.at);
-};
-var $author$project$Main$Ready = function (a) {
-	return {$: 1, a: a};
 };
 var $author$project$Main$appendLog = F2(
 	function (model, msg) {
@@ -6235,6 +6245,62 @@ var $author$project$Main$appendLog = F2(
 						[msg]))
 			});
 	});
+var $elm$core$Platform$Cmd$batch = _Platform_batch;
+var $author$project$Main$RestartDoneMsg = F2(
+	function (a, b) {
+		return {$: 2, a: a, b: b};
+	});
+var $author$project$Main$restartedDecoder = function (_v0) {
+	var name = _v0;
+	return A3(
+		$elm$core$Basics$composeL,
+		$elm$json$Json$Decode$map(
+			function (status) {
+				return name + (': ' + status);
+			}),
+		$elm$json$Json$Decode$field('status'),
+		$elm$json$Json$Decode$string);
+};
+var $elm$url$Url$Builder$QueryParameter = F2(
+	function (a, b) {
+		return {$: 0, a: a, b: b};
+	});
+var $elm$url$Url$percentEncode = _Url_percentEncode;
+var $elm$url$Url$Builder$string = F2(
+	function (key, value) {
+		return A2(
+			$elm$url$Url$Builder$QueryParameter,
+			$elm$url$Url$percentEncode(key),
+			$elm$url$Url$percentEncode(value));
+	});
+var $author$project$Main$restartServer = function (_v0) {
+	var name = _v0;
+	return $elm$http$Http$get(
+		{
+			aD: A2(
+				$elm$http$Http$expectJson,
+				$author$project$Main$RestartDoneMsg(name),
+				$author$project$Main$restartedDecoder(name)),
+			aR: A2(
+				$elm$url$Url$Builder$relative,
+				_List_fromArray(
+					['static', 'api', 'restart']),
+				_List_fromArray(
+					[
+						A2($elm$url$Url$Builder$string, 'host', name)
+					]))
+		});
+};
+var $author$project$Main$doRestart = function (cfg) {
+	return A3(
+		$elm$core$Basics$composeL,
+		$elm$core$Platform$Cmd$batch,
+		$elm$core$List$map($author$project$Main$restartServer),
+		cfg.at);
+};
+var $author$project$Main$Ready = function (a) {
+	return {$: 1, a: a};
+};
 var $author$project$Main$appendLogs = F2(
 	function (model, msgs) {
 		return A3(
@@ -6274,7 +6340,16 @@ var $author$project$Main$gotConfig = F2(
 					{
 						q: $author$project$Main$Ready(cfg)
 					}),
-				A2($elm$core$List$cons, 'Servers to disable:', cfg.at));
+				A2(
+					$elm$core$List$cons,
+					'Servers to disable:',
+					A2(
+						$elm$core$List$map,
+						function (_v1) {
+							var name = _v1;
+							return name;
+						},
+						cfg.at)));
 		} else {
 			var err = res.a;
 			return A2(
@@ -6340,44 +6415,18 @@ var $author$project$Main$gotRestart = F2(
 				}),
 			'Restarting servers...');
 	});
-var $author$project$Main$gotRestartDone = F2(
-	function (model, res) {
-		if (!res.$) {
-			var host_status = res.a;
-			var _v1 = model.q;
-			if (_v1.$ === 2) {
-				var state = _v1.a;
-				return A2(
-					$author$project$Main$appendLog,
-					_Utils_update(
-						model,
-						{
-							q: $author$project$Main$Restarting(
-								_Utils_update(
-									state,
-									{W: state.W + 1}))
-						}),
-					host_status);
-			} else {
-				return A2($author$project$Main$appendLog, model, 'Model in unexpected state, ignoring...');
-			}
-		} else {
-			var err = res.a;
-			return A3(
-				$elm$core$Basics$composeL,
-				$author$project$Main$appendLog(model),
-				$author$project$Main$printError,
-				err);
-		}
-	});
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $author$project$Main$FoundGifMsg = function (a) {
-	return {$: 3, a: a};
+	return {$: 4, a: a};
 };
+var $author$project$Main$Url = $elm$core$Basics$identity;
 var $author$project$Main$gifDecoder = A3(
 	$elm$core$Basics$composeL,
-	$elm$json$Json$Decode$field('data'),
-	$elm$json$Json$Decode$field('image_url'),
+	A2(
+		$elm$core$Basics$composeL,
+		$elm$json$Json$Decode$field('data'),
+		$elm$json$Json$Decode$field('image_url')),
+	$elm$json$Json$Decode$map($elm$core$Basics$identity),
 	$elm$json$Json$Decode$string);
 var $author$project$Main$getRandomCatGif = $elm$http$Http$get(
 	{
@@ -6393,6 +6442,63 @@ var $author$project$Main$restartDoneCmd = function (model) {
 		return $elm$core$Platform$Cmd$none;
 	}
 };
+var $author$project$Main$Retry = function (a) {
+	return {$: 3, a: a};
+};
+var $elm$core$Process$sleep = _Process_sleep;
+var $author$project$Main$retry = function (host) {
+	return A3(
+		$elm$core$Basics$composeL,
+		$elm$core$Task$perform(
+			function (_v0) {
+				return $author$project$Main$Retry(host);
+			}),
+		$elm$core$Process$sleep,
+		30 * 1000);
+};
+var $author$project$Main$gotRestartDone = F3(
+	function (model, _v0, res) {
+		var name = _v0;
+		if (!res.$) {
+			var host_status = res.a;
+			var _v2 = model.q;
+			if (_v2.$ === 2) {
+				var state = _v2.a;
+				var newModel = A2(
+					$author$project$Main$appendLog,
+					_Utils_update(
+						model,
+						{
+							q: $author$project$Main$Restarting(
+								_Utils_update(
+									state,
+									{W: state.W + 1}))
+						}),
+					host_status);
+				return _Utils_Tuple2(
+					newModel,
+					$author$project$Main$restartDoneCmd(newModel));
+			} else {
+				return _Utils_Tuple2(
+					A2($author$project$Main$appendLog, model, 'Model in unexpected state, ignoring...'),
+					$elm$core$Platform$Cmd$none);
+			}
+		} else {
+			var err = res.a;
+			return _Utils_Tuple2(
+				A3(
+					$elm$core$Basics$composeL,
+					A2(
+						$elm$core$Basics$composeL,
+						$author$project$Main$appendLog(model),
+						function (msg) {
+							return name + (': ' + msg);
+						}),
+					$author$project$Main$printError,
+					err),
+				$author$project$Main$retry(name));
+		}
+	});
 var $author$project$Main$update = F2(
 	function (msg, model) {
 		switch (msg.$) {
@@ -6407,11 +6513,14 @@ var $author$project$Main$update = F2(
 					A2($author$project$Main$gotRestart, model, cfg),
 					$author$project$Main$doRestart(cfg));
 			case 2:
-				var result = msg.a;
-				var newModel = A2($author$project$Main$gotRestartDone, model, result);
+				var host = msg.a;
+				var result = msg.b;
+				return A3($author$project$Main$gotRestartDone, model, host, result);
+			case 3:
+				var name = msg.a;
 				return _Utils_Tuple2(
-					newModel,
-					$author$project$Main$restartDoneCmd(newModel));
+					A2($author$project$Main$appendLog, model, 'Retrying: ' + name),
+					$author$project$Main$restartServer(name));
 			default:
 				var result = msg.a;
 				return _Utils_Tuple2(
@@ -12522,11 +12631,42 @@ var $author$project$Main$viewReady = F2(
 				]));
 	});
 var $mdgriffith$elm_ui$Element$none = $mdgriffith$elm_ui$Internal$Model$Empty;
-var $author$project$Main$renderImg = function (url) {
+var $mdgriffith$elm_ui$Internal$Model$AsRow = 0;
+var $mdgriffith$elm_ui$Internal$Model$asRow = 0;
+var $mdgriffith$elm_ui$Element$row = F2(
+	function (attrs, children) {
+		return A4(
+			$mdgriffith$elm_ui$Internal$Model$element,
+			$mdgriffith$elm_ui$Internal$Model$asRow,
+			$mdgriffith$elm_ui$Internal$Model$div,
+			A2(
+				$elm$core$List$cons,
+				$mdgriffith$elm_ui$Internal$Model$htmlClass($mdgriffith$elm_ui$Internal$Style$classes.ac + (' ' + $mdgriffith$elm_ui$Internal$Style$classes.E)),
+				A2(
+					$elm$core$List$cons,
+					$mdgriffith$elm_ui$Element$width($mdgriffith$elm_ui$Element$shrink),
+					A2(
+						$elm$core$List$cons,
+						$mdgriffith$elm_ui$Element$height($mdgriffith$elm_ui$Element$shrink),
+						attrs))),
+			$mdgriffith$elm_ui$Internal$Model$Unkeyed(children));
+	});
+var $author$project$Main$renderImg = function (_v0) {
+	var url = _v0;
 	return A2(
-		$mdgriffith$elm_ui$Element$image,
-		_List_Nil,
-		{a0: 'Funny cat, we\'re done!', bB: url});
+		$mdgriffith$elm_ui$Element$row,
+		_List_fromArray(
+			[
+				$mdgriffith$elm_ui$Element$padding(10)
+			]),
+		_List_fromArray(
+			[
+				$mdgriffith$elm_ui$Element$text('We are done, have a cat.'),
+				A2(
+				$mdgriffith$elm_ui$Element$image,
+				_List_Nil,
+				{a0: 'Funny cat, we\'re done!', bB: url})
+			]));
 };
 var $author$project$Main$viewRestarted = F3(
 	function (model, state, maybe_url) {

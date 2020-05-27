@@ -1,0 +1,16 @@
+{
+  "servers": [ "server1.local"
+             , "server2.local"
+             , "server3.local"
+             , "server4.local"
+             , "server5.local"
+             , "server6.local"
+             , "server7.local"
+             , "server8.local"
+             , "server9.local"
+             , "server10.local"
+             , "server11.local"
+             , "server12.local"
+             ]
+}
+
