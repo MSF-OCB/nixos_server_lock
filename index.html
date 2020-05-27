@@ -13693,13 +13693,18 @@ var $author$project$Main$renderImg = function (_v0) {
 	var url = _v0;
 	return A2(
 		$mdgriffith$elm_ui$Element$column,
-		_List_Nil,
+		_List_fromArray(
+			[
+				$mdgriffith$elm_ui$Element$centerX,
+				$mdgriffith$elm_ui$Element$spacing(5)
+			]),
 		_List_fromArray(
 			[
 				$mdgriffith$elm_ui$Element$text('We are done, have a cat.'),
 				A2(
 				$mdgriffith$elm_ui$Element$image,
-				_List_Nil,
+				_List_fromArray(
+					[$mdgriffith$elm_ui$Element$centerX]),
 				{aY: 'Funny cat, we\'re done!', bx: url})
 			]));
 };

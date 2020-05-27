@@ -206,9 +206,12 @@ viewRestarted model state maybe_url =
          ]
 
 renderImg : Url -> Element Msg
-renderImg (Url url) = column []
+renderImg (Url url) = column [ Element.centerX
+                             , Element.spacing 5
+                             ]
                              [ text "We are done, have a cat."
-                             , image [] { src = url, description = "Funny cat, we're done!" }
+                             , image [Element.centerX]
+                                     { src = url, description = "Funny cat, we're done!" }
                              ]
 
 printLog : Model -> Element.Attribute Msg
