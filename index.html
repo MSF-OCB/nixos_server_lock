@@ -6254,6 +6254,10 @@ var $author$project$Main$RestartDoneMsg = F2(
 	function (a, b) {
 		return {$: 3, a: a, b: b};
 	});
+var $author$project$Main$fromHost = function (_v0) {
+	var host = _v0;
+	return host;
+};
 var $author$project$Main$restartedDecoder = function (_v0) {
 	var name = _v0;
 	return A3(
@@ -6277,21 +6281,23 @@ var $elm$url$Url$Builder$string = F2(
 			$elm$url$Url$percentEncode(key),
 			$elm$url$Url$percentEncode(value));
 	});
-var $author$project$Main$restartServer = function (_v0) {
-	var name = _v0;
+var $author$project$Main$restartServer = function (host) {
 	return $elm$http$Http$get(
 		{
 			az: A2(
 				$elm$http$Http$expectJson,
-				$author$project$Main$RestartDoneMsg(name),
-				$author$project$Main$restartedDecoder(name)),
+				$author$project$Main$RestartDoneMsg(host),
+				$author$project$Main$restartedDecoder(host)),
 			aN: A2(
 				$elm$url$Url$Builder$relative,
 				_List_fromArray(
 					['static', 'api', 'restart']),
 				_List_fromArray(
 					[
-						A2($elm$url$Url$Builder$string, 'host', name)
+						A2(
+						$elm$url$Url$Builder$string,
+						'host',
+						$author$project$Main$fromHost(host))
 					]))
 		});
 };
@@ -6347,13 +6353,7 @@ var $author$project$Main$gotConfig = F2(
 				A2(
 					$elm$core$List$cons,
 					'Servers to disable:',
-					A2(
-						$elm$core$List$map,
-						function (_v1) {
-							var name = _v1;
-							return name;
-						},
-						cfg.aq)));
+					A2($elm$core$List$map, $author$project$Main$fromHost, cfg.aq)));
 		} else {
 			var err = res.a;
 			return A2(
@@ -6461,13 +6461,12 @@ var $author$project$Main$retry = function (host) {
 		30 * 1000);
 };
 var $author$project$Main$gotRestartDone = F3(
-	function (model, _v0, res) {
-		var name = _v0;
+	function (model, host, res) {
 		if (!res.$) {
 			var host_status = res.a;
-			var _v2 = model.i;
-			if (_v2.$ === 3) {
-				var state = _v2.a;
+			var _v1 = model.i;
+			if (_v1.$ === 3) {
+				var state = _v1.a;
 				var newModel = A2(
 					$author$project$Main$appendLog,
 					_Utils_update(
@@ -6496,11 +6495,11 @@ var $author$project$Main$gotRestartDone = F3(
 						$elm$core$Basics$composeL,
 						$author$project$Main$appendLog(model),
 						function (msg) {
-							return name + (': ' + msg);
+							return $author$project$Main$fromHost(host) + (': ' + msg);
 						}),
 					$author$project$Main$printError,
 					err),
-				$author$project$Main$retry(name));
+				$author$project$Main$retry(host));
 		}
 	});
 var $author$project$Main$update = F2(
@@ -6530,10 +6529,13 @@ var $author$project$Main$update = F2(
 				var result = msg.b;
 				return A3($author$project$Main$gotRestartDone, model, host, result);
 			case 4:
-				var name = msg.a;
+				var host = msg.a;
 				return _Utils_Tuple2(
-					A2($author$project$Main$appendLog, model, 'Retrying: ' + name),
-					$author$project$Main$restartServer(name));
+					A2(
+						$author$project$Main$appendLog,
+						model,
+						'Retrying: ' + $author$project$Main$fromHost(host)),
+					$author$project$Main$restartServer(host));
 			case 5:
 				var result = msg.a;
 				return _Utils_Tuple2(

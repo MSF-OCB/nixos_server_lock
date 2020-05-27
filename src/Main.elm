@@ -24,6 +24,12 @@ main = Browser.element { init = init
 type Url  = Url  String
 type Host = Host String
 
+fromUrl : Url -> String
+fromUrl (Url url) = url
+
+fromHost : Host -> String
+fromHost (Host host) = host
+
 type ModelState = Init
                 | Ready Config
                 | AwaitConfirm Config String
@@ -40,12 +46,14 @@ type alias RestartedState = { total : Int
                             , count : Int
                             }
 
-type Msg = ConfigMsg (Result Http.Error Config)
+type alias HttpResult res = Result Http.Error res
+
+type Msg = ConfigMsg (HttpResult Config)
          | ConfirmMsg Config
          | RestartMsg Config
-         | RestartDoneMsg Host (Result Http.Error String)
+         | RestartDoneMsg Host (HttpResult String)
          | Retry Host
-         | FoundGifMsg (Result Http.Error Url)
+         | FoundGifMsg (HttpResult Url)
          | UpdateConfirmText String
 
 printError : Http.Error -> String
@@ -74,7 +82,7 @@ update msg model = case msg of
   RestartMsg cfg             -> ({ model | state = AwaitConfirm cfg "" }, Cmd.none)
   ConfirmMsg cfg             -> (gotConfirm model cfg, doRestart cfg)
   RestartDoneMsg host result -> gotRestartDone model host result
-  Retry (Host name)          -> (appendLog model <| "Retrying: " ++ name, restartServer (Host name))
+  Retry host                 -> (appendLog model <| "Retrying: " ++ (fromHost host), restartServer host)
   FoundGifMsg result         -> (gotGif model result, Cmd.none)
   UpdateConfirmText txt      -> case model.state of
     AwaitConfirm cfg _ -> ( { model | state = AwaitConfirm cfg txt }, Cmd.none)
@@ -83,7 +91,7 @@ update msg model = case msg of
 gotConfig : Model -> (Result Http.Error Config) -> Model
 gotConfig model res = case res of
   Ok  cfg -> appendLogs { model | state = Ready cfg }
-                        ("Servers to disable:" :: (List.map (\(Host name) -> name) cfg.hosts))
+                        ("Servers to disable:" :: (List.map (fromHost) cfg.hosts))
   Err err -> appendLog model (printError err)
 
 gotConfirm : Model -> Config -> Model
@@ -93,14 +101,14 @@ gotConfirm model cfg = appendLog { model | state = Restarting { total = List.len
 doRestart : Config -> Cmd Msg
 doRestart cfg = Cmd.batch << (List.map restartServer) <| cfg.hosts
 
-gotRestartDone : Model -> Host -> (Result Http.Error String) -> (Model, Cmd Msg)
-gotRestartDone model (Host name) res = case res of
+gotRestartDone : Model -> Host -> (HttpResult String) -> (Model, Cmd Msg)
+gotRestartDone model host res = case res of
   Ok  host_status -> case model.state of
     Restarting state -> let newModel = appendLog { model | state = Restarting { state | count = state.count + 1 } }
                                                  host_status
                         in (newModel, restartDoneCmd newModel)
     _                -> (appendLog model "Model in unexpected state, ignoring...", Cmd.none)
-  Err err  -> (appendLog model << (\msg -> name ++ ": " ++ msg) << printError <| err, retry (Host name))
+  Err err  -> (appendLog model << (\msg -> (fromHost host) ++ ": " ++ msg) << printError <| err, retry host)
 
 retry : Host -> Cmd Msg
 retry host = T.perform (\_ -> Retry host) << P.sleep <| (30 * 1000)
@@ -110,7 +118,7 @@ restartDoneCmd model = case model.state of
   Restarting state -> if state.count == state.total then getRandomCatGif else Cmd.none
   _                -> Cmd.none
 
-gotGif : Model -> (Result Http.Error Url) -> Model
+gotGif : Model -> (HttpResult Url) -> Model
 gotGif model res = case model.state of
   Restarting state ->
     let newModel = case res of
@@ -244,11 +252,11 @@ configDecoder : Decoder Config
 configDecoder = J.map Config << J.field "servers" << J.list << J.map Host <| J.string
 
 restartServer : Host -> Cmd Msg
-restartServer (Host name) = Http.get { url = UB.relative ["static", "api", "restart"] [UB.string "host" name]
-                                       --url = UB.crossOrigin ("https://" ++ name) ["api", "restart"] []
-                                     -- , body = Http.emptyBody
-                                     , expect = Http.expectJson (RestartDoneMsg (Host name)) (restartedDecoder (Host name))
-                                     }
+restartServer host = Http.get { url = UB.relative ["static", "api", "restart"] [UB.string "host" (fromHost host)]
+                                --url = UB.crossOrigin ("https://" ++ name) ["api", "restart"] []
+                              -- , body = Http.emptyBody
+                              , expect = Http.expectJson (RestartDoneMsg host) (restartedDecoder host)
+                              }
 
 restartedDecoder : Host -> Decoder String
 restartedDecoder (Host name) = J.map (\status -> name ++ ": " ++ status) << J.field "status" <| J.string
