@@ -26,6 +26,7 @@ type Host = Host String
 
 type ModelState = Init
                 | Ready Config
+                | AwaitConfirm Config String
                 | Restarting RestartedState
                 | Done RestartedState (Maybe Url)
 
@@ -40,10 +41,12 @@ type alias RestartedState = { total : Int
                             }
 
 type Msg = ConfigMsg (Result Http.Error Config)
+         | ConfirmMsg Config
          | RestartMsg Config
          | RestartDoneMsg Host (Result Http.Error String)
          | Retry Host
          | FoundGifMsg (Result Http.Error Url)
+         | UpdateConfirmText String
 
 printError : Http.Error -> String
 printError error = case error of
@@ -68,10 +71,14 @@ initModel = { state = Init, log = [] }
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case msg of
   ConfigMsg result           -> (gotConfig model result, Cmd.none)
-  RestartMsg cfg             -> (gotRestart model cfg, doRestart cfg)
+  RestartMsg cfg             -> ({ model | state = AwaitConfirm cfg "" }, Cmd.none)
+  ConfirmMsg cfg             -> (gotConfirm model cfg, doRestart cfg)
   RestartDoneMsg host result -> gotRestartDone model host result
   Retry (Host name)          -> (appendLog model <| "Retrying: " ++ name, restartServer (Host name))
   FoundGifMsg result         -> (gotGif model result, Cmd.none)
+  UpdateConfirmText txt      -> case model.state of
+    AwaitConfirm cfg _ -> ( { model | state = AwaitConfirm cfg txt }, Cmd.none)
+    _                  -> (model, Cmd.none)
 
 gotConfig : Model -> (Result Http.Error Config) -> Model
 gotConfig model res = case res of
@@ -79,8 +86,8 @@ gotConfig model res = case res of
                         ("Servers to disable:" :: (List.map (\(Host name) -> name) cfg.hosts))
   Err err -> appendLog model (printError err)
 
-gotRestart : Model -> Config -> Model
-gotRestart model cfg = appendLog { model | state = Restarting { total = List.length cfg.hosts, count = 0 } }
+gotConfirm : Model -> Config -> Model
+gotConfirm model cfg = appendLog { model | state = Restarting { total = List.length cfg.hosts, count = 0 } }
                                  ("Restarting servers...")
 
 doRestart : Config -> Cmd Msg
@@ -131,10 +138,11 @@ viewElement model =
      , printLog model
      ]
      ( case model.state of
-         Init          -> el [Font.size 30] ( text "Loading the app config..." )
-         Ready cfg     -> viewReady model cfg
-         Restarting st -> viewRestarted model st Maybe.Nothing
-         Done st url   -> viewRestarted model st url
+         Init                 -> el [Font.size 30] ( text "Loading the app config..." )
+         Ready cfg            -> viewReady model cfg
+         AwaitConfirm cfg txt -> viewConfirm model cfg txt
+         Restarting st        -> viewRestarted model st Maybe.Nothing
+         Done st url          -> viewRestarted model st url
      )
 
 viewReady : Model -> Config -> Element Msg
@@ -149,6 +157,30 @@ viewReady model cfg =
               ]
               ( button "Restart the servers" button_url (RestartMsg cfg) )
          ]
+
+viewConfirm : Model -> Config -> String -> Element Msg
+viewConfirm model cfg txt =
+  let confirmText = "YES"
+  in column [ Element.width fill
+           , Element.height fill
+           ]
+           [ el [ Element.centerX ]
+                ( text "Confirmation required" )
+           , el [ Element.centerX
+                , Element.centerY
+                ]
+                ( Input.text [ Font.color (rgb255 0 0 0)
+                             , Element.focused []
+                             ]
+                             { onChange = \s -> if s == confirmText
+                                                then ConfirmMsg cfg
+                                                else UpdateConfirmText s
+                             , text = txt
+                             , placeholder = Maybe.Nothing
+                             , label = Input.labelAbove [] (text <| "Please type " ++ confirmText ++ " below to confirm")
+                             }
+                )
+           ]
 
 viewRestarted : Model -> RestartedState -> Maybe Url -> Element Msg
 viewRestarted model state maybe_url =
@@ -173,6 +205,9 @@ renderImg (Url url) = row [Element.padding 10]
 printLog : Model -> Element.Attribute Msg
 printLog model =
   Element.behindContent (el [ Element.alignBottom
+                            , Element.height fill
+                            , Element.width fill
+                            , Element.scrollbarY
                             , Font.size 10
                             ]
                             ( column []
@@ -189,7 +224,7 @@ backgroundColor : Element.Color
 backgroundColor = rgb255 100 50 50
 
 fontColor : Element.Color
-fontColor = rgb255 200 250 250
+fontColor = rgb255 200 220 220
 
 button : String -> String -> Msg -> Element Msg
 button label src onPress =
@@ -208,8 +243,8 @@ configDecoder : Decoder Config
 configDecoder = J.map Config << J.field "servers" << J.list << J.map Host <| J.string
 
 restartServer : Host -> Cmd Msg
-restartServer (Host name) = Http.get { url = UB.relative ["static", "api", "restart"] [UB.string "host" name]
-                                       --url = UB.crossOrigin ("https://" ++ host) ["api", "restart"] []
+restartServer (Host name) = Http.get { --url = UB.relative ["static", "api", "restart"] [UB.string "host" name]
+                                       url = UB.crossOrigin ("https://" ++ name) ["api", "restart"] []
                                      -- , body = Http.emptyBody
                                      , expect = Http.expectJson (RestartDoneMsg (Host name)) (restartedDecoder (Host name))
                                      }
