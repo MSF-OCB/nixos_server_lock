@@ -4,10 +4,8 @@ import Browser
 import Html exposing (Html)
 import Http
 import Json.Decode as J exposing (Decoder)
-import Task as T
-import Process as P
 
-import Element as Element exposing (Element, el, text, image, column, row, alignRight, fill, width, rgb255, spacing, centerY, padding)
+import Element as Element exposing (Element, el, text, image, column, row, fill, rgb255)
 import Element.Background as Background
 import Element.Border     as Border
 import Element.Events     as Events
@@ -133,9 +131,6 @@ getConfig = Http.get { url = config_url
 
 configDecoder : Decoder Config
 configDecoder = J.map Config (J.field "servers" (J.list J.string))
-
-restartServerDelayed : String -> Cmd Msg
-restartServerDelayed host = T.perform (\_ -> RestartDone (Ok host)) (P.sleep (3*1000))
 
 restartServer : String -> Cmd Msg
 restartServer host = Http.get { url = restart_url --"https://" ++ host ++ "/api/restart"
