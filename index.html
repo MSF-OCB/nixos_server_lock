@@ -12032,11 +12032,6 @@ var $mdgriffith$elm_ui$Element$text = function (content) {
 var $author$project$Main$Restart = function (a) {
 	return {$: 1, a: a};
 };
-var $mdgriffith$elm_ui$Internal$Model$AlignY = function (a) {
-	return {$: 5, a: a};
-};
-var $mdgriffith$elm_ui$Internal$Model$Bottom = 2;
-var $mdgriffith$elm_ui$Element$alignBottom = $mdgriffith$elm_ui$Internal$Model$AlignY(2);
 var $mdgriffith$elm_ui$Internal$Model$Focus = 0;
 var $mdgriffith$elm_ui$Internal$Model$PseudoSelector = F2(
 	function (a, b) {
@@ -12045,6 +12040,9 @@ var $mdgriffith$elm_ui$Internal$Model$PseudoSelector = F2(
 var $mdgriffith$elm_ui$Internal$Flag$focus = $mdgriffith$elm_ui$Internal$Flag$flag(31);
 var $mdgriffith$elm_ui$Internal$Model$AlignX = function (a) {
 	return {$: 6, a: a};
+};
+var $mdgriffith$elm_ui$Internal$Model$AlignY = function (a) {
+	return {$: 5, a: a};
 };
 var $mdgriffith$elm_ui$Internal$Model$Class = F2(
 	function (a, b) {
@@ -12307,6 +12305,27 @@ var $mdgriffith$elm_ui$Internal$Model$Fill = function (a) {
 	return {$: 2, a: a};
 };
 var $mdgriffith$elm_ui$Element$fill = $mdgriffith$elm_ui$Internal$Model$Fill(1);
+var $mdgriffith$elm_ui$Internal$Model$Bottom = 2;
+var $mdgriffith$elm_ui$Element$alignBottom = $mdgriffith$elm_ui$Internal$Model$AlignY(2);
+var $author$project$Main$printLog = F2(
+	function (header, msgs) {
+		return A2(
+			$mdgriffith$elm_ui$Element$el,
+			_List_fromArray(
+				[
+					$mdgriffith$elm_ui$Element$alignBottom,
+					$mdgriffith$elm_ui$Element$Font$size(10)
+				]),
+			A2(
+				$mdgriffith$elm_ui$Element$column,
+				_List_Nil,
+				_List_fromArray(
+					[
+						$mdgriffith$elm_ui$Element$text('Debug log:\n'),
+						$mdgriffith$elm_ui$Element$text(
+						header + (':\n' + A2($elm$core$String$join, '\n', msgs)))
+					])));
+	});
 var $author$project$Main$viewReady = function (cfg) {
 	return A2(
 		$mdgriffith$elm_ui$Element$column,
@@ -12331,22 +12350,7 @@ var $author$project$Main$viewReady = function (cfg) {
 					'Restart the servers',
 					$author$project$Main$button_url,
 					$author$project$Main$Restart(cfg))),
-				A2(
-				$mdgriffith$elm_ui$Element$el,
-				_List_fromArray(
-					[
-						$mdgriffith$elm_ui$Element$alignBottom,
-						$mdgriffith$elm_ui$Element$Font$size(10)
-					]),
-				A2(
-					$mdgriffith$elm_ui$Element$column,
-					_List_Nil,
-					_List_fromArray(
-						[
-							$mdgriffith$elm_ui$Element$text('Debug log:\n'),
-							$mdgriffith$elm_ui$Element$text(
-							'Servers to disable:\n' + A2($elm$core$String$join, '\n', cfg.as))
-						])))
+				A2($author$project$Main$printLog, 'Servers to disable', cfg.as)
 			]));
 };
 var $author$project$Main$viewRestarted = function (state) {
@@ -12370,22 +12374,7 @@ var $author$project$Main$viewRestarted = function (state) {
 						$mdgriffith$elm_ui$Element$text(
 						'Progress: ' + ($elm$core$String$fromInt(state.ac) + ('/' + $elm$core$String$fromInt(state.ax))))
 					])),
-				A2(
-				$mdgriffith$elm_ui$Element$el,
-				_List_fromArray(
-					[
-						$mdgriffith$elm_ui$Element$alignBottom,
-						$mdgriffith$elm_ui$Element$Font$size(10)
-					]),
-				A2(
-					$mdgriffith$elm_ui$Element$column,
-					_List_Nil,
-					_List_fromArray(
-						[
-							$mdgriffith$elm_ui$Element$text('Debug log:\n'),
-							$mdgriffith$elm_ui$Element$text(
-							'Servers restarted:\n' + A2($elm$core$String$join, '\n', state.ae))
-						])))
+				A2($author$project$Main$printLog, 'Servers restarted', state.ae)
 			]));
 };
 var $author$project$Main$viewElement = function (model) {

@@ -77,14 +77,7 @@ viewReady cfg =
               , Element.centerY
               ]
               ( button "Restart the servers" button_url (Restart cfg) )
-         , el [ Element.alignBottom
-              , Font.size 10
-              ]
-              ( column []
-                       [ text "Debug log:\n"
-                       , text ("Servers to disable:\n" ++ String.join "\n" cfg.hosts)
-                       ]
-              )
+         , printLog "Servers to disable" cfg.hosts
          ]
 
 viewRestarted : RestartedState -> Element Msg
@@ -97,15 +90,18 @@ viewRestarted state = column [ Element.width fill
                                       [ text ("Restarting " ++ (String.fromInt state.total) ++ " servers.")
                                       , text ("Progress: " ++ (String.fromInt state.count) ++ "/" ++ (String.fromInt state.total))
                                       ]
-                             , el [ Element.alignBottom
-                                  , Font.size 10
-                                  ]
-                                  ( column []
-                                           [ text "Debug log:\n"
-                                           , text ("Servers restarted:\n" ++ String.join "\n" state.log)
-                                           ]
-                                  )
+                             , printLog "Servers restarted" state.log
                              ]
+
+printLog : String -> List String -> Element Msg
+printLog header msgs = el [ Element.alignBottom
+                          , Font.size 10
+                          ]
+                          ( column []
+                                   [ text "Debug log:\n"
+                                   , text (header ++ ":\n" ++ String.join "\n" msgs)
+                                   ]
+                          )
 
 button_url : String
 button_url = "red-button.png"
@@ -135,8 +131,8 @@ configDecoder = J.map Config (J.field "servers" (J.list J.string))
 restartServer : String -> Cmd Msg
 restartServer host = Http.get { url = restart_url --"https://" ++ host ++ "/api/restart"
                               -- , body = Http.emptyBody
-                               , expect = Http.expectJson RestartDone (restartedDecoder host)
-                               }
+                              , expect = Http.expectJson RestartDone (restartedDecoder host)
+                              }
 
 restartedDecoder : String -> Decoder String
 restartedDecoder host = J.map (\status -> host ++ ": " ++ status) (J.field "status" J.string)
