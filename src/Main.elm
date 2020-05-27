@@ -189,6 +189,7 @@ viewRestarted model state maybe_url =
          ]
          [ column [ Element.centerX
                   , Element.centerY
+                  , Element.padding 10
                   ]
                   [ text ("Restarting " ++ (String.fromInt state.total) ++ " servers.")
                   , text ("Progress: " ++ (String.fromInt state.count) ++ "/" ++ (String.fromInt state.total))
