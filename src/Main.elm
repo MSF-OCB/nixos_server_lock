@@ -189,7 +189,7 @@ viewRestarted model state maybe_url =
          ]
          [ column [ Element.centerX
                   , Element.centerY
-                  , Element.padding 10
+                  , Element.spacing 10
                   ]
                   [ text ("Restarting " ++ (String.fromInt state.total) ++ " servers.")
                   , text ("Progress: " ++ (String.fromInt state.count) ++ "/" ++ (String.fromInt state.total))
@@ -198,10 +198,10 @@ viewRestarted model state maybe_url =
          ]
 
 renderImg : Url -> Element Msg
-renderImg (Url url) = row [Element.padding 10]
-                          [ text "We are done, have a cat."
-                          , image [] { src = url, description = "Funny cat, we're done!" }
-                          ]
+renderImg (Url url) = column []
+                             [ text "We are done, have a cat."
+                             , image [] { src = url, description = "Funny cat, we're done!" }
+                             ]
 
 printLog : Model -> Element.Attribute Msg
 printLog model =
