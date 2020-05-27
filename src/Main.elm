@@ -66,7 +66,7 @@ viewElement model = case model of
   Init         -> el [] ( text "Loading the app config..." )
   Ready cfg    -> viewReady cfg
   Restarted st -> viewRestarted st
-  Failure fs   -> el [] ( text (Debug.toString fs) )
+  Failure fs   -> el [] ( text "Oh-oh... Something went wrong." )
 
 viewReady : Config -> Element Msg
 viewReady cfg =
