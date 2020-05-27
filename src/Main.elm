@@ -57,6 +57,7 @@ view : Model -> Html Msg
 view model = Element.layout [ Background.color backgroundColor
                             , Font.color fontColor
                             , Font.size 50
+                            , Element.padding 15
                             ] (viewElement model)
 
 viewElement : Model -> Element Msg
