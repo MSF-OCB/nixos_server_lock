@@ -139,7 +139,7 @@ restartedDecoder : String -> Decoder String
 restartedDecoder host = J.map (\status -> host ++ ": " ++ status) (J.field "status" J.string)
 
 config_url: String
-config_url = "https://gist.githubusercontent.com/R-VdP/4947fc2c79918c2ae02398a326c3bc63/raw/39bf796ec9b62c8266fc3725ab254b32d57b5d10/config"
+config_url = "https://gist.githubusercontent.com/R-VdP/4947fc2c79918c2ae02398a326c3bc63/raw/fc4a2cc81f50e426275b7dff87c26d724439720d/config"
 
 restart_url : String
 restart_url = "https://gist.githubusercontent.com/R-VdP/9ef9c09fdc13cdde5c890ef46b0b5b79/raw/34e13504603db179d6531aa6724bee52932332c9/restart"
