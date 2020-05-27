@@ -42,7 +42,7 @@ init _ = (Init, getConfig)
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case msg of
   Restart cfg        -> (Restarted { total = List.length cfg.hosts, count = 0, log = [] },
-                                   Cmd.batch (List.map restartServerDelayed cfg.hosts))
+                                   Cmd.batch (List.map restartServer cfg.hosts))
   GotConfig result   -> case result of
     Ok  cfg -> (Ready cfg, Cmd.none)
     Err err -> (Failure (HttpError err ), Cmd.none)
@@ -138,15 +138,17 @@ restartServerDelayed : String -> Cmd Msg
 restartServerDelayed host = T.perform (\_ -> RestartDone (Ok host)) (P.sleep (3*1000))
 
 restartServer : String -> Cmd Msg
-restartServer host = Http.get { url = config_url --"https://" ++ host ++ "/api/restart"
+restartServer host = Http.get { url = restart_url --"https://" ++ host ++ "/api/restart"
                               -- , body = Http.emptyBody
-                               , expect = Http.expectJson RestartDone restartedDecoder
+                               , expect = Http.expectJson RestartDone (restartedDecoder host)
                                }
 
-restartedDecoder : Decoder String
-restartedDecoder = J.succeed "Unimplemented"
+restartedDecoder : String -> Decoder String
+restartedDecoder host = J.map (\status -> host ++ ": " ++ status) (J.field "status" J.string)
 
 config_url: String
 config_url = "https://gist.githubusercontent.com/R-VdP/4947fc2c79918c2ae02398a326c3bc63/raw/39bf796ec9b62c8266fc3725ab254b32d57b5d10/config"
 
+restart_url : String
+restart_url = "https://gist.githubusercontent.com/R-VdP/9ef9c09fdc13cdde5c890ef46b0b5b79/raw/34e13504603db179d6531aa6724bee52932332c9/restart"
 

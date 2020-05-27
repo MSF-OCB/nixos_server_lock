@@ -6202,15 +6202,24 @@ var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $author$project$Main$RestartDone = function (a) {
 	return {$: 2, a: a};
 };
-var $elm$core$Process$sleep = _Process_sleep;
-var $author$project$Main$restartServerDelayed = function (host) {
+var $author$project$Main$restart_url = 'https://gist.githubusercontent.com/R-VdP/9ef9c09fdc13cdde5c890ef46b0b5b79/raw/34e13504603db179d6531aa6724bee52932332c9/restart';
+var $author$project$Main$restartedDecoder = function (host) {
 	return A2(
-		$elm$core$Task$perform,
-		function (_v0) {
-			return $author$project$Main$RestartDone(
-				$elm$core$Result$Ok(host));
+		$elm$json$Json$Decode$map,
+		function (status) {
+			return host + (': ' + status);
 		},
-		$elm$core$Process$sleep(3 * 1000));
+		A2($elm$json$Json$Decode$field, 'status', $elm$json$Json$Decode$string));
+};
+var $author$project$Main$restartServer = function (host) {
+	return $elm$http$Http$get(
+		{
+			a0: A2(
+				$elm$http$Http$expectJson,
+				$author$project$Main$RestartDone,
+				$author$project$Main$restartedDecoder(host)),
+			bD: $author$project$Main$restart_url
+		});
 };
 var $author$project$Main$update = F2(
 	function (msg, model) {
@@ -6225,7 +6234,7 @@ var $author$project$Main$update = F2(
 							ax: $elm$core$List$length(cfg.as)
 						}),
 					$elm$core$Platform$Cmd$batch(
-						A2($elm$core$List$map, $author$project$Main$restartServerDelayed, cfg.as)));
+						A2($elm$core$List$map, $author$project$Main$restartServer, cfg.as)));
 			case 0:
 				var result = msg.a;
 				if (!result.$) {
