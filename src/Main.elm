@@ -18,37 +18,70 @@ main = Browser.element { init = init
                        , view = view
                        }
 
-type Model = Init
-           | Ready Config
-           | Restarted RestartedState
-           | Failure FailureState
+type ModelState = Init
+                | Ready Config
+                | Restarted RestartedState
+
+type alias Model = { state : ModelState
+                   , log   : List String
+                   }
 
 type alias Config = { hosts : List String }
 
-type alias RestartedState = { total: Int, count : Int, log: List String }
+type alias RestartedState = { total : Int
+                            , count : Int
+                            }
 
-type FailureState = HttpError Http.Error
-                  | MsgError String
+type Msg = ConfigMsg (Result Http.Error Config)
+         | RestartMsg Config
+         | RestartDoneMsg (Result Http.Error String)
 
-type Msg = GotConfig (Result Http.Error Config)
-         | Restart Config
-         | RestartDone (Result Http.Error String)
+printError : Http.Error -> String
+printError error = case error of
+  Http.BadUrl s     -> "BadUrl: " ++ s
+  Http.Timeout      -> "Timeout"
+  Http.NetworkError -> "NetworkError"
+  Http.BadStatus i  -> "BadStatus: " ++ (String.fromInt i)
+  Http.BadBody s    -> "BadBody: " ++ s
+
+appendLog : Model -> String -> Model
+appendLog model msg = { model | log = model.log ++ [msg] }
+
+appendLogs : Model -> List String -> Model
+appendLogs model msgs = List.foldl (\s m -> appendLog m s) model msgs
 
 init : () -> (Model, Cmd Msg)
-init _ = (Init, getConfig)
+init _ = (initModel, getConfig)
+
+initModel : Model
+initModel = { state = Init, log = [] }
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case msg of
-  Restart cfg        -> (Restarted { total = List.length cfg.hosts, count = 0, log = [] },
-                                   Cmd.batch (List.map restartServer cfg.hosts))
-  GotConfig result   -> case result of
-    Ok  cfg -> (Ready cfg, Cmd.none)
-    Err err -> (Failure (HttpError err ), Cmd.none)
-  RestartDone result -> case result of
-    Ok  host -> case model of
-      Restarted state -> (Restarted { state | count = state.count + 1, log = host :: state.log} , Cmd.none)
-      _               -> (Failure (MsgError "Model in unexpected state"), Cmd.none)
-    Err err  -> (Failure (HttpError err), Cmd.none)
+  ConfigMsg result      -> (gotConfig model result, Cmd.none)
+  RestartMsg cfg        -> (gotRestart model cfg, doRestart cfg)
+  RestartDoneMsg result -> (gotRestartDone model result, Cmd.none)
+
+gotConfig : Model -> (Result Http.Error Config) -> Model
+gotConfig model res = case res of
+  Ok  cfg -> appendLogs { model | state = Ready cfg }
+                        ("Servers to disable:" :: cfg.hosts)
+  Err err -> appendLog model (printError err)
+
+gotRestart : Model -> Config -> Model
+gotRestart model cfg = appendLog { model | state = Restarted { total = List.length cfg.hosts, count = 0 } }
+                                 ("Restarting servers...")
+
+doRestart : Config -> Cmd Msg
+doRestart cfg = Cmd.batch (List.map restartServer cfg.hosts)
+
+gotRestartDone : Model -> (Result Http.Error String) -> Model
+gotRestartDone model res = case res of
+  Ok  host_status -> case model.state of
+    Restarted state -> appendLog { model | state = Restarted { state | count = state.count + 1 } }
+                                 host_status
+    _               -> appendLog model "Model in unexpected state"
+  Err err  -> appendLog model (printError err)
 
 subscriptions : Model -> Sub Msg
 subscriptions model = Sub.none
@@ -57,53 +90,60 @@ view : Model -> Html Msg
 view model = Element.layout [ Background.color backgroundColor
                             , Font.color fontColor
                             , Font.size 50
+                            , Element.width fill
+                            , Element.height fill
                             , Element.padding 15
                             ] (viewElement model)
 
 viewElement : Model -> Element Msg
-viewElement model = case model of
-  Init         -> el [] ( text "Loading the app config..." )
-  Ready cfg    -> viewReady cfg
-  Restarted st -> viewRestarted st
-  Failure fs   -> el [] ( text "Oh-oh... Something went wrong." )
+viewElement model =
+  el [ Element.width fill
+     , Element.height fill
+     , printLog model
+     ]
+     ( case model.state of
+         Init         -> el [Font.size 30] ( text "Loading the app config..." )
+         Ready cfg    -> viewReady model cfg
+         Restarted st -> viewRestarted model st
+     )
 
-viewReady : Config -> Element Msg
-viewReady cfg =
+viewReady : Model -> Config -> Element Msg
+viewReady model cfg =
   column [ Element.width fill
          , Element.height fill
-         , printLog "Servers to disable" cfg.hosts
          ]
          [ el [ Element.centerX ]
               ( text "Secure the servers in your project" )
          , el [ Element.centerX
               , Element.centerY
               ]
-              ( button "Restart the servers" button_url (Restart cfg) )
+              ( button "Restart the servers" button_url (RestartMsg cfg) )
          ]
 
-viewRestarted : RestartedState -> Element Msg
-viewRestarted state = column [ Element.width fill
-                             , Element.height fill
-                             , printLog "Servers restarted" state.log
-                             ]
-                             [ column [ Element.centerX
-                                      , Element.centerY
-                                      ]
-                                      [ text ("Restarting " ++ (String.fromInt state.total) ++ " servers.")
-                                      , text ("Progress: " ++ (String.fromInt state.count) ++ "/" ++ (String.fromInt state.total))
-                                      ]
-                             ]
+viewRestarted : Model -> RestartedState -> Element Msg
+viewRestarted model state =
+  column [ Element.width fill
+         , Element.height fill
+         ]
+         [ column [ Element.centerX
+                  , Element.centerY
+                  ]
+                  [ text ("Restarting " ++ (String.fromInt state.total) ++ " servers.")
+                  , text ("Progress: " ++ (String.fromInt state.count) ++ "/" ++ (String.fromInt state.total))
+                  ]
+         ]
 
-printLog : String -> List String -> Element.Attribute Msg
-printLog header msgs = Element.behindContent (el [ Element.alignBottom
-                                                 , Font.size 10
-                                                 ]
-                                                 ( column []
-                                                          [ text "Debug log:\n"
-                                                          , text (header ++ ":\n" ++ String.join "\n" msgs)
-                                                          ]
-                                                 )
-                                             )
+printLog : Model -> Element.Attribute Msg
+printLog model =
+  Element.behindContent (el [ Element.alignBottom
+                            , Font.size 10
+                            ]
+                            ( column []
+                                     [ text "Debug log:\n"
+                                     , text (String.join "\n" model.log)
+                                     ]
+                            )
+                        )
 
 button_url : String
 button_url = "red-button.png"
@@ -124,16 +164,16 @@ button label src onPress =
 
 getConfig : Cmd Msg
 getConfig = Http.get { url = config_url
-                     , expect = Http.expectJson GotConfig configDecoder
+                     , expect = Http.expectJson ConfigMsg configDecoder
                      }
 
 configDecoder : Decoder Config
 configDecoder = J.map Config (J.field "servers" (J.list J.string))
 
 restartServer : String -> Cmd Msg
-restartServer host = Http.get { url = restart_url --"https://" ++ host ++ "/api/restart"
+restartServer host = Http.get { url = restart_url ++ "?host=" ++ host --"https://" ++ host ++ "/api/restart"
                               -- , body = Http.emptyBody
-                              , expect = Http.expectJson RestartDone (restartedDecoder host)
+                              , expect = Http.expectJson RestartDoneMsg (restartedDecoder host)
                               }
 
 restartedDecoder : String -> Decoder String
