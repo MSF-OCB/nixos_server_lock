@@ -50,8 +50,8 @@ fromHost (Host host) = host
 type ModelState = Init
                 | Ready Config
                 | AwaitConfirm Config String
-                | Restarting RestartedState
-                | Done RestartedState (Maybe Url)
+                | Locking Progress
+                | Done Progress (Maybe Url)
 
 type alias Model = { state : ModelState
                    , log   : List String
@@ -59,16 +59,20 @@ type alias Model = { state : ModelState
 
 type alias Config = { hosts : List Host }
 
-type alias RestartedState = { total : Int
-                            , count : Int
-                            }
+type alias Progress = { total : Int
+                      , lockingProgress  : ProgressState
+                      , verifyingProgress: ProgressState
+                      }
+
+type alias ProgressState = { count : Int }
 
 type alias HttpResult res = Result Http.Error res
 
 type Msg = ConfigMsg (HttpResult Config)
          | ConfirmMsg Config
-         | RestartMsg Config
-         | RestartDoneMsg Host (HttpResult String)
+         | LockMsg Config
+         | LockDoneMsg Host (HttpResult String)
+         | VerifyDoneMsg Host (HttpResult String)
          | Retry Host
          | FoundGifMsg (HttpResult Url)
          | UpdateConfirmText String
@@ -96,38 +100,64 @@ initModel = { state = Init, log = [] }
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case msg of
-  ConfigMsg result           -> (gotConfig model result, Cmd.none)
-  RestartMsg cfg             -> ({ model | state = AwaitConfirm cfg "" }, tryFocus confirmationInputId)
-  ConfirmMsg cfg             -> (gotConfirm model cfg, doRestart cfg)
-  RestartDoneMsg host result -> gotRestartDone model host result
-  Retry host                 -> (appendLog model <| "Retrying: " ++ (fromHost host), restartServer host)
-  FoundGifMsg result         -> (gotGif model result, Cmd.none)
-  UpdateConfirmText txt      -> case model.state of
+  ConfigMsg result          -> (gotConfig model result, Cmd.none)
+  LockMsg cfg               -> ({ model | state = AwaitConfirm cfg "" }, tryFocus confirmationInputId)
+  ConfirmMsg cfg            -> (gotConfirm model cfg, doLock cfg)
+  LockDoneMsg host result   -> gotLockDone model host result
+  VerifyDoneMsg host result -> gotVerifyDone model host result
+  Retry host                -> (appendLog model <| "Retrying: " ++ (fromHost host), lockServer host)
+  FoundGifMsg result        -> (gotGif model result, Cmd.none)
+  UpdateConfirmText txt     -> case model.state of
     AwaitConfirm cfg _ -> ( { model | state = AwaitConfirm cfg txt }, Cmd.none)
     _                  -> (model, Cmd.none)
-  Focused id                 -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
+  Focused id                -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
 
 gotConfig : Model -> (Result Http.Error Config) -> Model
 gotConfig model res = case res of
   Ok  cfg -> appendLogs { model | state = Ready cfg }
-                        ("Servers to disable:" :: (List.map (fromHost) cfg.hosts))
+                        ("Servers to lock:" :: (List.map (fromHost) cfg.hosts))
   Err err -> appendLog model (printError err)
 
 gotConfirm : Model -> Config -> Model
-gotConfirm model cfg = appendLog { model | state = Restarting { total = List.length cfg.hosts, count = 0 } }
-                                 ("Restarting servers...")
+gotConfirm model cfg = appendLog { model | state = Locking { total = List.length cfg.hosts
+                                                           , lockingProgress   = { count = 0 }
+                                                           , verifyingProgress = { count = 0 }
+                                                           }
+                                 }
+                                 ("Locking servers...")
 
-doRestart : Config -> Cmd Msg
-doRestart cfg = Cmd.batch << (List.map restartServer) <| cfg.hosts
+doLock : Config -> Cmd Msg
+doLock cfg = Cmd.batch << (List.map lockServer) <| cfg.hosts
 
-gotRestartDone : Model -> Host -> (HttpResult String) -> (Model, Cmd Msg)
-gotRestartDone model host res = case res of
+gotLockDone : Model -> Host -> (HttpResult String) -> (Model, Cmd Msg)
+gotLockDone model host res = case res of
   Ok  host_status -> case model.state of
-    Restarting state -> let newModel = appendLog { model | state = Restarting { state | count = state.count + 1 } }
-                                                 host_status
-                        in (newModel, restartDoneCmd newModel)
+    Locking progress -> let newProgressState = increaseCount progress.lockingProgress
+                            newModel = appendLog { model | state = Locking { progress | lockingProgress = newProgressState } }
+                                                 (formatProgressMsg host "Lock" host_status)
+                        in (newModel, verifyServer host)
     _                -> (appendLog model "Model in unexpected state, ignoring...", Cmd.none)
-  Err err  -> (appendLog model << (\msg -> (fromHost host) ++ ": " ++ msg) << printError <| err, retry host)
+  Err err         -> (appendLog model << formatProgressMsg host "Lock"  << printError <| err, retry host)
+
+gotVerifyDone : Model -> Host -> (HttpResult String) -> (Model, Cmd Msg)
+gotVerifyDone model host res = case res of
+  Ok  host_status -> case model.state of
+    Locking progress -> let newProgressState = increaseCount progress.verifyingProgress
+                            newProgress = { progress | verifyingProgress = newProgressState }
+                            newModel = appendLog { model | state = Locking newProgress }
+                                                 (formatProgressMsg host "Verify" host_status)
+                        in (newModel, verifyDoneCmd newProgress)
+    _                -> (appendLog model "Model in unexpected state, ignoring...", Cmd.none)
+  Err err         -> (appendLog model << formatProgressMsg host "Verify" << printError <| err, retry host)
+
+increaseCount : ProgressState -> ProgressState
+increaseCount p = { p | count = p.count + 1}
+
+formatProgressMsg : Host -> String -> String -> String
+formatProgressMsg host header msg = header ++ ": " ++ (fromHost host) ++ ": " ++ msg
+
+verifyDoneCmd : Progress -> Cmd Msg
+verifyDoneCmd progress = if progress.verifyingProgress.count == progress.total then getRandomCatGif else Cmd.none
 
 retry : Host -> Cmd Msg
 retry host = T.perform (\_ -> Retry host) << P.sleep <| (retryDelaySec * 1000)
@@ -135,26 +165,17 @@ retry host = T.perform (\_ -> Retry host) << P.sleep <| (retryDelaySec * 1000)
 tryFocus : String -> Cmd Msg
 tryFocus id = T.attempt (\_ -> Focused id) (Dom.focus id)
 
-restartDoneCmd : Model -> Cmd Msg
-restartDoneCmd model = case model.state of
-  Restarting state -> if state.count == state.total then getRandomCatGif else Cmd.none
-  _                -> Cmd.none
-
 gotGif : Model -> (HttpResult Url) -> Model
 gotGif model res = case model.state of
-  Restarting state ->
+  Locking progress ->
     let newModel = case res of
-                     Ok  url ->           { model | state = Done state (Maybe.Just url) }
-                     Err err -> appendLog { model | state = Done state Maybe.Nothing } << printError <| err
+                     Ok  url ->           { model | state = Done progress (Maybe.Just url) }
+                     Err err -> appendLog { model | state = Done progress Maybe.Nothing } << printError <| err
     in appendLog newModel "Reached final state."
-  _                -> appendLog model "Model in unexpected state, ignoring..."
+  _               -> appendLog model "Model in unexpected state, ignoring..."
 
 subscriptions : Model -> Sub Msg
 subscriptions model = Sub.none
-
---defaultStyle : List (Element.Attribute Msg)
---defaultStyle = [ Background.color backgroundColor
---               , Font.color fontColor
 
 view : Model -> Html Msg
 view model = Element.layout [ Background.color backgroundColor
@@ -176,8 +197,8 @@ viewElement model =
          Init                 -> el [Font.size 30] ( text "Loading the app config..." )
          Ready cfg            -> viewReady model cfg
          AwaitConfirm cfg txt -> viewConfirm model cfg txt
-         Restarting st        -> viewRestarted model st Maybe.Nothing
-         Done st url          -> viewRestarted model st url
+         Locking progress     -> viewProgress progress Maybe.Nothing
+         Done progress url    -> viewProgress progress url
      )
 
 viewReady : Model -> Config -> Element Msg
@@ -190,7 +211,7 @@ viewReady model cfg =
          , el [ Element.centerX
               , Element.centerY
               ]
-              ( button "Restart the servers" buttonUrl (RestartMsg cfg) )
+              ( button "Lock the servers" buttonUrl (LockMsg cfg) )
          ]
 
 viewConfirm : Model -> Config -> String -> Element Msg
@@ -219,8 +240,8 @@ viewConfirm model cfg txt =
                  ] (textInput)
             ]
 
-viewRestarted : Model -> RestartedState -> Maybe Url -> Element Msg
-viewRestarted model state maybe_url =
+viewProgress : Progress -> Maybe Url -> Element Msg
+viewProgress progress maybeUrl =
   column [ Element.width fill
          , Element.height fill
          ]
@@ -228,10 +249,11 @@ viewRestarted model state maybe_url =
                   , Element.centerY
                   , Element.spacing 10
                   ]
-                  [ column [] [ text ("Restarting " ++ (String.fromInt state.total) ++ " servers.")
-                              , text ("Progress: " ++ (String.fromInt state.count) ++ "/" ++ (String.fromInt state.total))
+                  [ column [] [ text ("Locking " ++ (String.fromInt progress.total) ++ " servers.")
+                              , text ("Locked: " ++ (String.fromInt progress.lockingProgress.count) ++ "/" ++ (String.fromInt progress.total))
+                              , text ("Verified: " ++ (String.fromInt progress.verifyingProgress.count) ++ "/" ++ (String.fromInt progress.total))
                               ]
-                  , Maybe.withDefault Element.none << Maybe.map renderImg <| maybe_url
+                  , Maybe.withDefault Element.none << Maybe.map renderImg <| maybeUrl
                   ]
          ]
 
@@ -273,15 +295,22 @@ getConfig = Http.get { url = UB.relative ["static", "api", "config"] []
 configDecoder : Decoder Config
 configDecoder = J.map Config << J.field "servers" << J.list << J.map Host <| J.string
 
-restartServer : Host -> Cmd Msg
-restartServer host = Http.get { url = UB.relative ["static", "api", "restart"] [UB.string "host" (fromHost host)]
-                                --url = UB.crossOrigin ("https://" ++ name) ["api", "restart"] []
-                              -- , body = Http.emptyBody
-                              , expect = Http.expectJson (RestartDoneMsg host) (restartedDecoder host)
-                              }
+lockServer : Host -> Cmd Msg
+lockServer host = Http.get { url = UB.relative ["static", "api", "lock"] [UB.string "host" (fromHost host)]
+                             --url = UB.crossOrigin ("https://" ++ name) ["api", "lock"] []
+                           -- , body = Http.emptyBody
+                           , expect = Http.expectJson (LockDoneMsg host) statusDecoder
+                           }
 
-restartedDecoder : Host -> Decoder String
-restartedDecoder (Host name) = J.map (\status -> name ++ ": " ++ status) << J.field "status" <| J.string
+verifyServer : Host -> Cmd Msg
+verifyServer host = Http.get { url = UB.relative ["static", "api", "verify"] [UB.string "host" (fromHost host)]
+                             --url = UB.crossOrigin ("https://" ++ name) ["api", "lock"] []
+                           -- , body = Http.emptyBody
+                           , expect = Http.expectJson (VerifyDoneMsg host) statusDecoder
+                           }
+
+statusDecoder : Decoder String
+statusDecoder = J.field "status" <| J.string
 
 getRandomCatGif : Cmd Msg
 getRandomCatGif = Http.get { url = "https://api.giphy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC&tag=cat"
