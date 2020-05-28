@@ -1,7 +1,9 @@
 module Main exposing (main)
 
 import Browser
+import Browser.Dom as Dom
 import Html exposing (Html)
+import Html.Attributes as HA
 import Http
 import Json.Decode as J exposing (Decoder)
 import Process as P
@@ -20,6 +22,21 @@ main = Browser.element { init = init
                        , subscriptions = subscriptions
                        , view = view
                        }
+
+retryDelaySec : Float
+retryDelaySec = 15
+
+buttonUrl : String
+buttonUrl = UB.relative ["static", "red-button.png"] []
+
+backgroundColor : Element.Color
+backgroundColor = rgb255 100 50 50
+
+fontColor : Element.Color
+fontColor = rgb255 200 220 220
+
+confirmationInputId : String
+confirmationInputId = "confirmationInputTextId"
 
 type Url  = Url  String
 type Host = Host String
@@ -55,6 +72,7 @@ type Msg = ConfigMsg (HttpResult Config)
          | Retry Host
          | FoundGifMsg (HttpResult Url)
          | UpdateConfirmText String
+         | Focused String
 
 printError : Http.Error -> String
 printError error = case error of
@@ -79,7 +97,7 @@ initModel = { state = Init, log = [] }
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case msg of
   ConfigMsg result           -> (gotConfig model result, Cmd.none)
-  RestartMsg cfg             -> ({ model | state = AwaitConfirm cfg "" }, Cmd.none)
+  RestartMsg cfg             -> ({ model | state = AwaitConfirm cfg "" }, tryFocus confirmationInputId)
   ConfirmMsg cfg             -> (gotConfirm model cfg, doRestart cfg)
   RestartDoneMsg host result -> gotRestartDone model host result
   Retry host                 -> (appendLog model <| "Retrying: " ++ (fromHost host), restartServer host)
@@ -87,6 +105,7 @@ update msg model = case msg of
   UpdateConfirmText txt      -> case model.state of
     AwaitConfirm cfg _ -> ( { model | state = AwaitConfirm cfg txt }, Cmd.none)
     _                  -> (model, Cmd.none)
+  Focused id                 -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
 
 gotConfig : Model -> (Result Http.Error Config) -> Model
 gotConfig model res = case res of
@@ -111,7 +130,10 @@ gotRestartDone model host res = case res of
   Err err  -> (appendLog model << (\msg -> (fromHost host) ++ ": " ++ msg) << printError <| err, retry host)
 
 retry : Host -> Cmd Msg
-retry host = T.perform (\_ -> Retry host) << P.sleep <| (30 * 1000)
+retry host = T.perform (\_ -> Retry host) << P.sleep <| (retryDelaySec * 1000)
+
+tryFocus : String -> Cmd Msg
+tryFocus id = T.attempt (\_ -> Focused id) (Dom.focus id)
 
 restartDoneCmd : Model -> Cmd Msg
 restartDoneCmd model = case model.state of
@@ -122,13 +144,17 @@ gotGif : Model -> (HttpResult Url) -> Model
 gotGif model res = case model.state of
   Restarting state ->
     let newModel = case res of
-                     Ok  url -> { model | state = Done state (Maybe.Just url) }
+                     Ok  url ->           { model | state = Done state (Maybe.Just url) }
                      Err err -> appendLog { model | state = Done state Maybe.Nothing } << printError <| err
     in appendLog newModel "Reached final state."
   _                -> appendLog model "Model in unexpected state, ignoring..."
 
 subscriptions : Model -> Sub Msg
 subscriptions model = Sub.none
+
+--defaultStyle : List (Element.Attribute Msg)
+--defaultStyle = [ Background.color backgroundColor
+--               , Font.color fontColor
 
 view : Model -> Html Msg
 view model = Element.layout [ Background.color backgroundColor
@@ -143,6 +169,7 @@ viewElement : Model -> Element Msg
 viewElement model =
   el [ Element.width fill
      , Element.height fill
+     , Element.scrollbars
      , printLog model
      ]
      ( case model.state of
@@ -163,32 +190,34 @@ viewReady model cfg =
          , el [ Element.centerX
               , Element.centerY
               ]
-              ( button "Restart the servers" button_url (RestartMsg cfg) )
+              ( button "Restart the servers" buttonUrl (RestartMsg cfg) )
          ]
 
 viewConfirm : Model -> Config -> String -> Element Msg
 viewConfirm model cfg txt =
-  let confirmText = "YES"
-  in column [ Element.width fill
-           , Element.height fill
-           ]
-           [ el [ Element.centerX ]
-                ( text "Confirmation required" )
-           , el [ Element.centerX
-                , Element.centerY
-                ]
-                ( Input.text [ Font.color (rgb255 0 0 0)
-                             , Element.focused []
+  let title = "Confirmation required"
+      confirmText = "YES"
+      label = "Please type " ++ confirmText ++ " below to confirm"
+      textInput = Input.text [ Font.color (rgb255 0 0 0)
+                             , Element.htmlAttribute << HA.id <| confirmationInputId
+                             , Element.spacing 15
                              ]
                              { onChange = \s -> if s == confirmText
                                                 then ConfirmMsg cfg
                                                 else UpdateConfirmText s
                              , text = txt
                              , placeholder = Maybe.Nothing
-                             , label = Input.labelAbove [] (text <| "Please type " ++ confirmText ++ " below to confirm")
+                             , label = Input.labelAbove [] (text label)
                              }
-                )
-           ]
+  in column [ Element.width fill
+            , Element.height fill
+            ]
+            [ el [ Element.centerX ]
+                 ( text title )
+            , el [ Element.centerX
+                 , Element.centerY
+                 ] (textInput)
+            ]
 
 viewRestarted : Model -> RestartedState -> Maybe Url -> Element Msg
 viewRestarted model state maybe_url =
@@ -199,8 +228,9 @@ viewRestarted model state maybe_url =
                   , Element.centerY
                   , Element.spacing 10
                   ]
-                  [ text ("Restarting " ++ (String.fromInt state.total) ++ " servers.")
-                  , text ("Progress: " ++ (String.fromInt state.count) ++ "/" ++ (String.fromInt state.total))
+                  [ column [] [ text ("Restarting " ++ (String.fromInt state.total) ++ " servers.")
+                              , text ("Progress: " ++ (String.fromInt state.count) ++ "/" ++ (String.fromInt state.total))
+                              ]
                   , Maybe.withDefault Element.none << Maybe.map renderImg <| maybe_url
                   ]
          ]
@@ -216,27 +246,16 @@ renderImg (Url url) = column [ Element.centerX
 
 printLog : Model -> Element.Attribute Msg
 printLog model =
-  Element.behindContent (el [ Element.alignBottom
-                            , Element.height fill
+  Element.behindContent (el [ Element.height fill
                             , Element.width fill
-                            , Element.scrollbarY
                             , Font.size 10
                             ]
-                            ( column []
+                            ( column [Element.alignBottom]
                                      [ text "Debug log:\n"
                                      , text << String.join "\n" <| model.log
                                      ]
                             )
                         )
-
-button_url : String
-button_url = "red-button.png"
-
-backgroundColor : Element.Color
-backgroundColor = rgb255 100 50 50
-
-fontColor : Element.Color
-fontColor = rgb255 200 220 220
 
 button : String -> String -> Msg -> Element Msg
 button label src onPress =
