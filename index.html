@@ -6421,21 +6421,23 @@ var $author$project$Main$increaseCount = function (p) {
 		{C: p.C + 1});
 };
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
-var $author$project$Main$Retry = function (a) {
-	return {$: 5, a: a};
-};
+var $author$project$Main$Retry = F2(
+	function (a, b) {
+		return {$: 5, a: a, b: b};
+	});
 var $author$project$Main$retryDelaySec = 15;
 var $elm$core$Process$sleep = _Process_sleep;
-var $author$project$Main$retry = function (host) {
-	return A3(
-		$elm$core$Basics$composeL,
-		$elm$core$Task$perform(
-			function (_v0) {
-				return $author$project$Main$Retry(host);
-			}),
-		$elm$core$Process$sleep,
-		$author$project$Main$retryDelaySec * 1000);
-};
+var $author$project$Main$retry = F2(
+	function (host, cmd) {
+		return A3(
+			$elm$core$Basics$composeL,
+			$elm$core$Task$perform(
+				function (_v0) {
+					return A2($author$project$Main$Retry, host, cmd);
+				}),
+			$elm$core$Process$sleep,
+			$author$project$Main$retryDelaySec * 1000);
+	});
 var $author$project$Main$VerifyDoneMsg = F2(
 	function (a, b) {
 		return {$: 4, a: a, b: b};
@@ -6498,8 +6500,27 @@ var $author$project$Main$gotLockDone = F3(
 						A2($author$project$Main$formatProgressMsg, host, 'Lock')),
 					$author$project$Main$printError,
 					err),
-				$author$project$Main$retry(host));
+				A2(
+					$author$project$Main$retry,
+					host,
+					$author$project$Main$lockServer(host)));
 		}
+	});
+var $author$project$Main$newVerifiedModel = F3(
+	function (model, progress, host) {
+		var newProgressState = $author$project$Main$increaseCount(progress.Y);
+		var newProgress = _Utils_update(
+			progress,
+			{Y: newProgressState});
+		var newModel = A2(
+			$author$project$Main$appendLog,
+			_Utils_update(
+				model,
+				{
+					i: $author$project$Main$Locking(newProgress)
+				}),
+			A3($author$project$Main$formatProgressMsg, host, 'Verify', 'success'));
+		return _Utils_Tuple2(newModel, newProgress);
 	});
 var $author$project$Main$FoundGifMsg = function (a) {
 	return {$: 6, a: a};
@@ -6523,26 +6544,30 @@ var $author$project$Main$verifyDoneCmd = function (progress) {
 };
 var $author$project$Main$gotVerifyDone = F3(
 	function (model, host, res) {
+		var retryCmd = A2(
+			$author$project$Main$retry,
+			host,
+			$author$project$Main$verifyServer(host));
 		if (!res.$) {
 			var host_status = res.a;
 			var _v1 = model.i;
 			if (_v1.$ === 3) {
 				var progress = _v1.a;
-				var newProgressState = $author$project$Main$increaseCount(progress.Y);
-				var newProgress = _Utils_update(
-					progress,
-					{Y: newProgressState});
-				var newModel = A2(
-					$author$project$Main$appendLog,
-					_Utils_update(
-						model,
-						{
-							i: $author$project$Main$Locking(newProgress)
-						}),
-					A3($author$project$Main$formatProgressMsg, host, 'Verify', host_status));
-				return _Utils_Tuple2(
-					newModel,
-					$author$project$Main$verifyDoneCmd(newProgress));
+				if (host_status === 'OK') {
+					var _v2 = A3($author$project$Main$newVerifiedModel, model, progress, host);
+					var newModel = _v2.a;
+					var newProgress = _v2.b;
+					return _Utils_Tuple2(
+						newModel,
+						$author$project$Main$verifyDoneCmd(newProgress));
+				} else {
+					return _Utils_Tuple2(
+						A2(
+							$author$project$Main$appendLog,
+							model,
+							A3($author$project$Main$formatProgressMsg, host, 'Verify', 'verification unsuccessful')),
+						retryCmd);
+				}
 			} else {
 				return _Utils_Tuple2(
 					A2($author$project$Main$appendLog, model, 'Model in unexpected state, ignoring...'),
@@ -6559,7 +6584,7 @@ var $author$project$Main$gotVerifyDone = F3(
 						A2($author$project$Main$formatProgressMsg, host, 'Verify')),
 					$author$project$Main$printError,
 					err),
-				$author$project$Main$retry(host));
+				retryCmd);
 		}
 	});
 var $author$project$Main$Focused = function (a) {
@@ -6624,12 +6649,13 @@ var $author$project$Main$update = F2(
 				return A3($author$project$Main$gotVerifyDone, model, host, result);
 			case 5:
 				var host = msg.a;
+				var cmd = msg.b;
 				return _Utils_Tuple2(
 					A2(
 						$author$project$Main$appendLog,
 						model,
 						'Retrying: ' + $author$project$Main$fromHost(host)),
-					$author$project$Main$lockServer(host));
+					cmd);
 			case 6:
 				var result = msg.a;
 				return _Utils_Tuple2(

@@ -73,7 +73,7 @@ type Msg = ConfigMsg (HttpResult Config)
          | LockMsg Config
          | LockDoneMsg Host (HttpResult String)
          | VerifyDoneMsg Host (HttpResult String)
-         | Retry Host
+         | Retry Host (Cmd Msg)
          | FoundGifMsg (HttpResult Url)
          | UpdateConfirmText String
          | Focused String
@@ -105,7 +105,7 @@ update msg model = case msg of
   ConfirmMsg cfg            -> (gotConfirm model cfg, doLock cfg)
   LockDoneMsg host result   -> gotLockDone model host result
   VerifyDoneMsg host result -> gotVerifyDone model host result
-  Retry host                -> (appendLog model <| "Retrying: " ++ (fromHost host), lockServer host)
+  Retry host cmd            -> (appendLog model <| "Retrying: " ++ (fromHost host), cmd)
   FoundGifMsg result        -> (gotGif model result, Cmd.none)
   UpdateConfirmText txt     -> case model.state of
     AwaitConfirm cfg _ -> ( { model | state = AwaitConfirm cfg txt }, Cmd.none)
@@ -137,18 +137,26 @@ gotLockDone model host res = case res of
                                                  (formatProgressMsg host "Lock" host_status)
                         in (newModel, verifyServer host)
     _                -> (appendLog model "Model in unexpected state, ignoring...", Cmd.none)
-  Err err         -> (appendLog model << formatProgressMsg host "Lock"  << printError <| err, retry host)
+  Err err         -> (appendLog model << formatProgressMsg host "Lock"  << printError <| err, retry host (lockServer host))
 
 gotVerifyDone : Model -> Host -> (HttpResult String) -> (Model, Cmd Msg)
-gotVerifyDone model host res = case res of
-  Ok  host_status -> case model.state of
-    Locking progress -> let newProgressState = increaseCount progress.verifyingProgress
-                            newProgress = { progress | verifyingProgress = newProgressState }
-                            newModel = appendLog { model | state = Locking newProgress }
-                                                 (formatProgressMsg host "Verify" host_status)
-                        in (newModel, verifyDoneCmd newProgress)
-    _                -> (appendLog model "Model in unexpected state, ignoring...", Cmd.none)
-  Err err         -> (appendLog model << formatProgressMsg host "Verify" << printError <| err, retry host)
+gotVerifyDone model host res =
+  let retryCmd = retry host (verifyServer host)
+  in case res of
+    Ok  host_status -> case model.state of
+      Locking progress -> if host_status == "OK"
+                          then let (newModel, newProgress) = newVerifiedModel model progress host
+                               in (newModel, verifyDoneCmd newProgress)
+                          else (appendLog model (formatProgressMsg host "Verify" "verification unsuccessful"), retryCmd)
+      _                -> (appendLog model "Model in unexpected state, ignoring...", Cmd.none)
+    Err err         -> (appendLog model << formatProgressMsg host "Verify" << printError <| err, retryCmd)
+
+newVerifiedModel : Model -> Progress -> Host -> (Model, Progress)
+newVerifiedModel model progress host = let newProgressState = increaseCount progress.verifyingProgress
+                                           newProgress = { progress | verifyingProgress = newProgressState }
+                                           newModel = appendLog { model | state = Locking newProgress }
+                                                                (formatProgressMsg host "Verify" "success")
+                                       in (newModel, newProgress)
 
 increaseCount : ProgressState -> ProgressState
 increaseCount p = { p | count = p.count + 1}
@@ -159,8 +167,8 @@ formatProgressMsg host header msg = header ++ ": " ++ (fromHost host) ++ ": " ++
 verifyDoneCmd : Progress -> Cmd Msg
 verifyDoneCmd progress = if progress.verifyingProgress.count == progress.total then getRandomCatGif else Cmd.none
 
-retry : Host -> Cmd Msg
-retry host = T.perform (\_ -> Retry host) << P.sleep <| (retryDelaySec * 1000)
+retry : Host -> Cmd Msg -> Cmd Msg
+retry host cmd = T.perform (\_ -> Retry host cmd) << P.sleep <| (retryDelaySec * 1000)
 
 tryFocus : String -> Cmd Msg
 tryFocus id = T.attempt (\_ -> Focused id) (Dom.focus id)
