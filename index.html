@@ -6496,9 +6496,7 @@ var $author$project$Main$newProgressModel = F5(
 	});
 var $author$project$Main$newLockedModel = F3(
 	function (model, progress, host) {
-		var _v0 = A5($author$project$Main$newProgressModel, model, progress, host, 'Lock', $author$project$Main$increaseLockingCount);
-		var newModel = _v0.a;
-		return newModel;
+		return A5($author$project$Main$newProgressModel, model, progress, host, 'Lock', $author$project$Main$increaseLockingCount);
 	});
 var $author$project$Main$VerifyDoneMsg = F2(
 	function (a, b) {
@@ -6534,7 +6532,8 @@ var $author$project$Main$gotLockDone = F3(
 			'Lock',
 			$author$project$Main$lockServer(host),
 			function (progress) {
-				var newModel = A3($author$project$Main$newLockedModel, model, progress, host);
+				var _v0 = A3($author$project$Main$newLockedModel, model, progress, host);
+				var newModel = _v0.a;
 				return _Utils_Tuple2(
 					newModel,
 					$author$project$Main$verifyServer(host));

@@ -145,7 +145,7 @@ assumeLocking model fun = case model.state of
 
 gotLockDone : Model -> Host -> (HttpResult String) -> (Model, Cmd Msg)
 gotLockDone model host res = gotLockingProgress model host res "Lock" (lockServer host)
-                                                (\progress -> let newModel = newLockedModel model progress host
+                                                (\progress -> let (newModel, _) = newLockedModel model progress host
                                                               in (newModel, verifyServer host))
 
 gotVerifyDone : Model -> Host -> (HttpResult String) -> (Model, Cmd Msg)
@@ -153,9 +153,8 @@ gotVerifyDone model host res = gotLockingProgress model host res "Verify" (verif
                                                   (\progress -> let (newModel, newProgress) = newVerifiedModel model progress host
                                                                 in (newModel, verifyDoneCmd newProgress))
 
-newLockedModel : Model -> Progress -> Host -> Model
-newLockedModel model progress host = let (newModel, _) = newProgressModel model progress host "Lock" increaseLockingCount
-                                     in newModel
+newLockedModel : Model -> Progress -> Host -> (Model, Progress)
+newLockedModel model progress host = newProgressModel model progress host "Lock" increaseLockingCount
 
 newVerifiedModel : Model -> Progress -> Host -> (Model, Progress)
 newVerifiedModel model progress host = newProgressModel model progress host "Verify" increaseVerifyingCount
