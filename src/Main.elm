@@ -116,7 +116,7 @@ gotConfig : Model -> HttpResult Config -> Model
 gotConfig model res = case res of
   Ok  cfg -> appendLogs { model | state = Ready cfg }
                         ("Servers to lock:" :: (List.map (fromHost) cfg.hosts))
-  Err err -> appendLog model (printError err)
+  Err err -> appendLog model << printError <| err
 
 gotConfirm : Model -> Config -> Model
 gotConfirm model cfg = appendLog { model | state = Locking { total = List.length cfg.hosts
@@ -159,7 +159,7 @@ gotLockingProgress model host result logHeader retryCmd incrProgress newCmd =
                          let (newModel, newProgress) = newProgressModel model progress host logHeader incrProgress
                          in (newModel, newCmd newModel newProgress)
                        )
-                       else (appendLog model (formatProgressMsg host logHeader "unsuccessful"), doRetry)
+                       else (appendLog model << formatProgressMsg host logHeader <| "unsuccessful", doRetry)
     Err err         -> progressError model host logHeader doRetry err
 
 assumeLocking : Model -> (Progress -> (Model, Cmd Msg)) -> (Model, Cmd Msg)
@@ -171,10 +171,11 @@ newProgressModel : Model -> Progress -> Host -> String -> (Progress -> Progress)
 newProgressModel model progress host logHeader incr =
   let newProgress = incr progress
       newModel    = { model | state = Locking newProgress }
-  in (appendLog newModel (formatProgressMsg host logHeader "success"), newProgress)
+  in (appendLog newModel << formatProgressMsg host logHeader <| "success", newProgress)
 
 progressError : Model -> Host -> String -> Cmd Msg -> Http.Error -> (Model, Cmd Msg)
-progressError model host header retryCmd err = (appendLog model << formatProgressMsg host header  << printError <| err, retryCmd)
+progressError model host logHeader retryCmd err =
+  (appendLog model << formatProgressMsg host logHeader << printError <| err, retryCmd)
 
 formatProgressMsg : Host -> String -> String -> String
 formatProgressMsg host logHeader msg = logHeader ++ ": " ++ (fromHost host) ++ ": " ++ msg

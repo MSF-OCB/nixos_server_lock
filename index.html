@@ -6347,10 +6347,11 @@ var $author$project$Main$gotConfig = F2(
 					A2($elm$core$List$map, $author$project$Main$fromHost, cfg.as)));
 		} else {
 			var err = res.a;
-			return A2(
-				$author$project$Main$appendLog,
-				model,
-				$author$project$Main$printError(err));
+			return A3(
+				$elm$core$Basics$composeL,
+				$author$project$Main$appendLog(model),
+				$author$project$Main$printError,
+				err);
 		}
 	});
 var $author$project$Main$Locking = function (a) {
@@ -6438,21 +6439,22 @@ var $author$project$Main$newProgressModel = F5(
 				n: $author$project$Main$Locking(newProgress)
 			});
 		return _Utils_Tuple2(
-			A2(
-				$author$project$Main$appendLog,
-				newModel,
-				A3($author$project$Main$formatProgressMsg, host, logHeader, 'success')),
+			A3(
+				$elm$core$Basics$composeL,
+				$author$project$Main$appendLog(newModel),
+				A2($author$project$Main$formatProgressMsg, host, logHeader),
+				'success'),
 			newProgress);
 	});
 var $author$project$Main$progressError = F5(
-	function (model, host, header, retryCmd, err) {
+	function (model, host, logHeader, retryCmd, err) {
 		return _Utils_Tuple2(
 			A3(
 				$elm$core$Basics$composeL,
 				A2(
 					$elm$core$Basics$composeL,
 					$author$project$Main$appendLog(model),
-					A2($author$project$Main$formatProgressMsg, host, header)),
+					A2($author$project$Main$formatProgressMsg, host, logHeader)),
 				$author$project$Main$printError,
 				err),
 			retryCmd);
@@ -6490,10 +6492,11 @@ var $author$project$Main$gotLockingProgress = F7(
 						newModel,
 						A2(newCmd, newModel, newProgress));
 				}) : _Utils_Tuple2(
-				A2(
-					$author$project$Main$appendLog,
-					model,
-					A3($author$project$Main$formatProgressMsg, host, logHeader, 'unsuccessful')),
+				A3(
+					$elm$core$Basics$composeL,
+					$author$project$Main$appendLog(model),
+					A2($author$project$Main$formatProgressMsg, host, logHeader),
+					'unsuccessful'),
 				doRetry);
 		} else {
 			var err = result.a;
