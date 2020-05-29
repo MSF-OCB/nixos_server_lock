@@ -6426,8 +6426,23 @@ var $author$project$Main$gotGif = F2(
 			});
 	});
 var $author$project$Main$formatProgressMsg = F3(
-	function (host, header, msg) {
-		return header + (': ' + ($author$project$Main$fromHost(host) + (': ' + msg)));
+	function (host, logHeader, msg) {
+		return logHeader + (': ' + ($author$project$Main$fromHost(host) + (': ' + msg)));
+	});
+var $author$project$Main$newProgressModel = F5(
+	function (model, progress, host, logHeader, incr) {
+		var newProgress = incr(progress);
+		var newModel = _Utils_update(
+			model,
+			{
+				n: $author$project$Main$Locking(newProgress)
+			});
+		return _Utils_Tuple2(
+			A2(
+				$author$project$Main$appendLog,
+				newModel,
+				A3($author$project$Main$formatProgressMsg, host, logHeader, 'success')),
+			newProgress);
 	});
 var $author$project$Main$progressError = F5(
 	function (model, host, header, retryCmd, err) {
@@ -6459,20 +6474,30 @@ var $author$project$Main$retry = F2(
 			$elm$core$Process$sleep,
 			$author$project$Main$retryDelaySec * 1000);
 	});
-var $author$project$Main$gotLockingProgress = F6(
-	function (model, host, result, header, retryCmd, mkProgressModel) {
+var $author$project$Main$gotLockingProgress = F7(
+	function (model, host, result, logHeader, retryCmd, incrProgress, newCmd) {
 		var doRetry = A2($author$project$Main$retry, host, retryCmd);
 		if (!result.$) {
 			var host_status = result.a;
-			return (host_status === 'OK') ? A2($author$project$Main$assumeLocking, model, mkProgressModel) : _Utils_Tuple2(
+			return (host_status === 'OK') ? A2(
+				$author$project$Main$assumeLocking,
+				model,
+				function (progress) {
+					var _v1 = A5($author$project$Main$newProgressModel, model, progress, host, logHeader, incrProgress);
+					var newModel = _v1.a;
+					var newProgress = _v1.b;
+					return _Utils_Tuple2(
+						newModel,
+						A2(newCmd, newModel, newProgress));
+				}) : _Utils_Tuple2(
 				A2(
 					$author$project$Main$appendLog,
 					model,
-					A3($author$project$Main$formatProgressMsg, host, header, 'unsuccessful')),
+					A3($author$project$Main$formatProgressMsg, host, logHeader, 'unsuccessful')),
 				doRetry);
 		} else {
 			var err = result.a;
-			return A5($author$project$Main$progressError, model, host, header, doRetry, err);
+			return A5($author$project$Main$progressError, model, host, logHeader, doRetry, err);
 		}
 	});
 var $author$project$Main$increaseLockingCount = function (progress) {
@@ -6480,25 +6505,6 @@ var $author$project$Main$increaseLockingCount = function (progress) {
 		progress,
 		{ac: progress.ac + 1});
 };
-var $author$project$Main$newProgressModel = F5(
-	function (model, progress, host, header, incr) {
-		var newProgress = incr(progress);
-		var newModel = _Utils_update(
-			model,
-			{
-				n: $author$project$Main$Locking(newProgress)
-			});
-		return _Utils_Tuple2(
-			A2(
-				$author$project$Main$appendLog,
-				newModel,
-				A3($author$project$Main$formatProgressMsg, host, header, 'success')),
-			newProgress);
-	});
-var $author$project$Main$newLockedModel = F3(
-	function (model, progress, host) {
-		return A5($author$project$Main$newProgressModel, model, progress, host, 'Lock', $author$project$Main$increaseLockingCount);
-	});
 var $author$project$Main$VerifyDoneMsg = F2(
 	function (a, b) {
 		return {$: 4, a: a, b: b};
@@ -6525,30 +6531,18 @@ var $author$project$Main$verifyServer = function (host) {
 };
 var $author$project$Main$gotLockDone = F3(
 	function (model, host, res) {
-		return A6(
-			$author$project$Main$gotLockingProgress,
-			model,
-			host,
-			res,
-			'Lock',
-			$author$project$Main$lockServer(host),
-			function (progress) {
-				var _v0 = A3($author$project$Main$newLockedModel, model, progress, host);
-				var newModel = _v0.a;
-				return _Utils_Tuple2(
-					newModel,
-					$author$project$Main$verifyServer(host));
+		var retryCmd = $author$project$Main$lockServer(host);
+		var newCmd = F2(
+			function (_v0, _v1) {
+				return $author$project$Main$verifyServer(host);
 			});
+		return A7($author$project$Main$gotLockingProgress, model, host, res, 'Lock', retryCmd, $author$project$Main$increaseLockingCount, newCmd);
 	});
 var $author$project$Main$increaseVerifyingCount = function (progress) {
 	return _Utils_update(
 		progress,
 		{X: progress.X + 1});
 };
-var $author$project$Main$newVerifiedModel = F3(
-	function (model, progress, host) {
-		return A5($author$project$Main$newProgressModel, model, progress, host, 'Verify', $author$project$Main$increaseVerifyingCount);
-	});
 var $author$project$Main$FoundGifMsg = function (a) {
 	return {$: 6, a: a};
 };
@@ -6571,21 +6565,12 @@ var $author$project$Main$verifyDoneCmd = function (progress) {
 };
 var $author$project$Main$gotVerifyDone = F3(
 	function (model, host, res) {
-		return A6(
-			$author$project$Main$gotLockingProgress,
-			model,
-			host,
-			res,
-			'Verify',
-			$author$project$Main$verifyServer(host),
-			function (progress) {
-				var _v0 = A3($author$project$Main$newVerifiedModel, model, progress, host);
-				var newModel = _v0.a;
-				var newProgress = _v0.b;
-				return _Utils_Tuple2(
-					newModel,
-					$author$project$Main$verifyDoneCmd(newProgress));
+		var retryCmd = $author$project$Main$verifyServer(host);
+		var newCmd = F2(
+			function (_v0, progress) {
+				return $author$project$Main$verifyDoneCmd(progress);
 			});
+		return A7($author$project$Main$gotLockingProgress, model, host, res, 'Verify', retryCmd, $author$project$Main$increaseVerifyingCount, newCmd);
 	});
 var $author$project$Main$Focused = function (a) {
 	return {$: 8, a: a};
