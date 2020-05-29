@@ -129,6 +129,20 @@ gotConfirm model cfg = appendLog { model | state = Locking { total = List.length
 doLock : Config -> Cmd Msg
 doLock cfg = Cmd.batch << (List.map lockServer) <| cfg.hosts
 
+gotLockDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
+gotLockDone model host res =
+  let newCmd _ _ = verifyServer host
+      retryCmd   = lockServer host
+      increaseLockingCount progress = { progress | lockingProgress = progress.lockingProgress + 1 }
+  in gotLockingProgress model host res "Lock" retryCmd increaseLockingCount newCmd
+
+gotVerifyDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
+gotVerifyDone model host res =
+  let newCmd _ progress = verifyDoneCmd progress
+      retryCmd          = verifyServer host
+      increaseVerifyingCount progress = { progress | verifyingProgress = progress.verifyingProgress + 1 }
+  in gotLockingProgress model host res "Verify" retryCmd increaseVerifyingCount newCmd
+
 gotLockingProgress : Model ->
                      Host ->
                      HttpResult String ->
@@ -153,26 +167,11 @@ assumeLocking model fun = case model.state of
   Locking progress -> fun progress
   _                -> (appendLog model "Model in unexpected state, ignoring...", Cmd.none)
 
-gotLockDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
-gotLockDone model host res = let newCmd _ _ = verifyServer host
-                                 retryCmd   = lockServer host
-                             in gotLockingProgress model host res "Lock" retryCmd increaseLockingCount newCmd
-
-gotVerifyDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
-gotVerifyDone model host res = let newCmd _ progress = verifyDoneCmd progress
-                                   retryCmd          = verifyServer host
-                               in gotLockingProgress model host res "Verify" retryCmd increaseVerifyingCount newCmd
-
 newProgressModel : Model -> Progress -> Host -> String -> (Progress -> Progress) -> (Model, Progress)
-newProgressModel model progress host logHeader incr = let newProgress = incr progress
-                                                          newModel    = { model | state = Locking newProgress }
-                                                      in (appendLog newModel (formatProgressMsg host logHeader "success"), newProgress)
-
-increaseLockingCount : Progress -> Progress
-increaseLockingCount progress = { progress | lockingProgress = progress.lockingProgress + 1 }
-
-increaseVerifyingCount : Progress -> Progress
-increaseVerifyingCount progress = { progress | verifyingProgress = progress.verifyingProgress + 1 }
+newProgressModel model progress host logHeader incr =
+  let newProgress = incr progress
+      newModel    = { model | state = Locking newProgress }
+  in (appendLog newModel (formatProgressMsg host logHeader "success"), newProgress)
 
 progressError : Model -> Host -> String -> Cmd Msg -> Http.Error -> (Model, Cmd Msg)
 progressError model host header retryCmd err = (appendLog model << formatProgressMsg host header  << printError <| err, retryCmd)
