@@ -6,9 +6,9 @@ import Html exposing (Html)
 import Html.Attributes as HA
 import Http
 import Json.Decode as J exposing (Decoder)
-import Process as P
+import Process     as P
 import Url.Builder as UB
-import Task as T
+import Task        as T
 
 import Element as Element exposing (Element, el, text, image, column, row, fill, rgb255)
 import Element.Background as Background
@@ -16,6 +16,9 @@ import Element.Border     as Border
 import Element.Events     as Events
 import Element.Font       as Font
 import Element.Input      as Input
+
+flip : (a -> b -> c) -> b -> a -> c
+flip f b a = f a b
 
 main = Browser.element { init = init
                        , update = update
@@ -48,16 +51,19 @@ fromHost : Host -> String
 fromHost (Host host) = host
 
 type ModelState = Init
-                | Ready Config
-                | AwaitConfirm Config String
+                | Ready
+                | AwaitConfirm String
                 | Locking Progress
                 | Done Progress (Maybe Url)
 
-type alias Model = { state : ModelState
-                   , log   : List String
+type alias Model = { state  : ModelState
+                   , config : Config
+                   , log    : List String
                    }
 
-type alias Config = { hosts : List Host }
+type alias Config = { hosts : List Host
+                    , mock  : Bool
+                    }
 
 type alias Progress = { total : Int
                       , lockingProgress  : ProgressState
@@ -68,14 +74,15 @@ type alias ProgressState = Int
 
 type alias HttpResult res = Result Http.Error res
 
-type Msg = ConfigMsg (HttpResult Config)
-         | ConfirmMsg Config
-         | LockMsg Config
+type Msg = HostConfigMsg (HttpResult (List Host))
+         | ConfirmMsg
+         | LockMsg
          | LockDoneMsg Host (HttpResult String)
          | VerifyDoneMsg Host (HttpResult String)
          | Retry Host (Cmd Msg)
          | FoundGifMsg (HttpResult Url)
          | UpdateConfirmText String
+         | MockCheckboxChanged Bool
          | Focused String
 
 printError : Http.Error -> String
@@ -92,54 +99,64 @@ appendLog model msg = { model | log = model.log ++ [msg] }
 appendLogs : Model -> List String -> Model
 appendLogs = List.foldl (\s m -> appendLog m s)
 
+updateConfig : Model -> (Config -> Config) -> Model
+updateConfig model updateC =
+  let oldConfig = model.config
+  in { model | config = updateC oldConfig }
+
 init : () -> (Model, Cmd Msg)
-init _ = (initModel, getConfig)
+init _ = (initModel, getHostConfig)
 
 initModel : Model
-initModel = { state = Init, log = [] }
+initModel = { state  = Init
+            , config = { hosts = [], mock = True }
+            , log    = []
+            }
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case msg of
-  ConfigMsg result          -> (gotConfig model result, Cmd.none)
-  LockMsg cfg               -> ({ model | state = AwaitConfirm cfg "" }, tryFocus confirmationInputId)
-  ConfirmMsg cfg            -> (gotConfirm model cfg, doLock cfg)
+  HostConfigMsg hosts       -> (gotConfig model hosts, Cmd.none)
+  LockMsg                   -> ({ model | state = AwaitConfirm "" }, tryFocus confirmationInputId)
+  ConfirmMsg                -> (gotConfirm model, doLock model.config)
   LockDoneMsg host result   -> gotLockDone model host result
   VerifyDoneMsg host result -> gotVerifyDone model host result
-  Retry host cmd            -> (appendLog model <| "Retrying: " ++ (fromHost host), cmd)
+  Retry host cmd            -> (appendLog model << (++) "Retrying: " << fromHost <| host, cmd)
   FoundGifMsg result        -> gotGif model result
   UpdateConfirmText txt     -> case model.state of
-    AwaitConfirm cfg _ -> ({ model | state = AwaitConfirm cfg txt }, Cmd.none)
-    _                  -> (model, Cmd.none)
+    AwaitConfirm _ -> ({ model | state = AwaitConfirm txt }, Cmd.none)
+    _              -> (model, Cmd.none)
+  MockCheckboxChanged mock  -> (updateConfig model (\oldConfig -> { oldConfig | mock = mock }), Cmd.none)
   Focused id                -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
 
-gotConfig : Model -> HttpResult Config -> Model
+gotConfig : Model -> HttpResult (List Host) -> Model
 gotConfig model res = case res of
-  Ok  cfg -> appendLogs { model | state = Ready cfg }
-                        ("Servers to lock:" :: (List.map fromHost cfg.hosts))
-  Err err -> appendLog model << printError <| err
+  Ok  hosts -> let doLogs   = flip appendLogs ("Servers to lock:" :: (List.map fromHost hosts))
+                   doConfig = flip updateConfig (\oldConfig -> { oldConfig | hosts = hosts })
+               in doLogs << doConfig <| { model | state = Ready }
+  Err err   -> appendLog model << printError <| err
 
-gotConfirm : Model -> Config -> Model
-gotConfirm model cfg = appendLog { model | state = Locking { total = List.length cfg.hosts
-                                                           , lockingProgress   = 0
-                                                           , verifyingProgress = 0
-                                                           }
-                                 }
-                                 "Locking servers..."
+gotConfirm : Model -> Model
+gotConfirm model = appendLog { model | state = Locking { total = List.length model.config.hosts
+                                                       , lockingProgress   = 0
+                                                       , verifyingProgress = 0
+                                                       }
+                             }
+                             "Locking servers..."
 
 doLock : Config -> Cmd Msg
-doLock = Cmd.batch << List.map lockServer << .hosts
+doLock cfg = Cmd.batch << List.map (lockServer cfg.mock) <| cfg.hosts
 
 gotLockDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
 gotLockDone model host res =
-  let newCmd _ _ = verifyServer host
-      retryCmd   = lockServer host
+  let newCmd _ _ = verifyServer model.config.mock host
+      retryCmd   = lockServer model.config.mock host
       increaseLockingCount progress = { progress | lockingProgress = progress.lockingProgress + 1 }
   in gotLockingProgress model host res "Lock" retryCmd increaseLockingCount newCmd
 
 gotVerifyDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
 gotVerifyDone model host res =
   let newCmd _ = verifyDoneCmd
-      retryCmd = verifyServer host
+      retryCmd = verifyServer model.config.mock host
       increaseVerifyingCount progress = { progress | verifyingProgress = progress.verifyingProgress + 1 }
   in gotLockingProgress model host res "Verify" retryCmd increaseVerifyingCount newCmd
 
@@ -218,15 +235,15 @@ viewElement model =
      , printLog model
      ]
      ( case model.state of
-         Init                 -> el [Font.size 30] ( text "Loading the app config..." )
-         Ready cfg            -> viewReady model cfg
-         AwaitConfirm cfg txt -> viewConfirm model cfg txt
-         Locking progress     -> viewProgress progress Maybe.Nothing
-         Done progress url    -> viewProgress progress url
+         Init              -> el [Font.size 30] ( text "Loading the app config..." )
+         Ready             -> viewReady model
+         AwaitConfirm txt  -> viewConfirm model txt
+         Locking progress  -> viewProgress model progress Maybe.Nothing
+         Done progress url -> viewProgress model progress url
      )
 
-viewReady : Model -> Config -> Element Msg
-viewReady model cfg =
+viewReady : Model -> Element Msg
+viewReady model =
   column [ Element.width fill
          , Element.height fill
          ]
@@ -235,39 +252,52 @@ viewReady model cfg =
          , el [ Element.centerX
               , Element.centerY
               ]
-              ( button "Lock the servers" buttonUrl (LockMsg cfg) )
+              ( button "Lock the servers" buttonUrl LockMsg )
          ]
 
-viewConfirm : Model -> Config -> String -> Element Msg
-viewConfirm model cfg txt =
+viewConfirm : Model -> String -> Element Msg
+viewConfirm model txt =
   let title = "Confirmation required"
       confirmText = "YES"
-      label = "Please type " ++ confirmText ++ " below to confirm"
+      txtLabel = "Please type " ++ confirmText ++ " below to confirm"
+      mockLabel = "Uncheck to disable test mode"
       textInput = Input.text [ Font.color (rgb255 0 0 0)
                              , Element.htmlAttribute << HA.id <| confirmationInputId
                              , Element.spacing 15
                              ]
                              { onChange = \s -> if s == confirmText
-                                                then ConfirmMsg cfg
+                                                then ConfirmMsg
                                                 else UpdateConfirmText s
                              , text = txt
                              , placeholder = Maybe.Nothing
-                             , label = Input.labelAbove [] (text label)
+                             , label = Input.labelAbove [] (text txtLabel)
                              }
+      mockCheckbox = Input.checkbox [ Element.spacing 15 ]
+                                    { onChange = MockCheckboxChanged
+                                    , icon = Input.defaultCheckbox
+                                    , checked = model.config.mock
+                                    , label = Input.labelRight [] (text mockLabel)
+                                    }
   in column [ Element.width fill
             , Element.height fill
             ]
             [ el [ Element.centerX ]
                  ( text title )
-            , el [ Element.centerX
-                 , Element.centerY
-                 ] (textInput)
+            , column [ Element.centerX
+                     , Element.centerY
+                     , Element.spacing 15
+                     , Font.size 20
+                     ]
+                     [ textInput
+                     , mockCheckbox
+                     ]
             ]
 
-viewProgress : Progress -> Maybe Url -> Element Msg
-viewProgress progress maybeUrl =
+viewProgress : Model -> Progress -> Maybe Url -> Element Msg
+viewProgress model progress maybeUrl =
   column [ Element.width fill
          , Element.height fill
+         , Font.size 20
          ]
          [ column [ Element.centerX
                   , Element.centerY
@@ -277,6 +307,9 @@ viewProgress progress maybeUrl =
                               , text ("Locked: " ++ (String.fromInt progress.lockingProgress) ++ "/" ++ (String.fromInt progress.total))
                               , text ("Verified: " ++ (String.fromInt progress.verifyingProgress) ++ "/" ++ (String.fromInt progress.total))
                               ]
+                  , if model.config.mock
+                    then text ("(Beware: you selected test mode,\n no servers have actually been disabled!)")
+                    else Element.none
                   , Maybe.withDefault Element.none << Maybe.map renderImg <| maybeUrl
                   ]
          ]
@@ -311,27 +344,34 @@ button label src onPress =
         ]
         { src = src, description = label }
 
-getConfig : Cmd Msg
-getConfig = Http.get { url = UB.relative ["static", "api", "config"] []
-                     , expect = Http.expectJson ConfigMsg configDecoder
-                     }
+getHostConfig : Cmd Msg
+getHostConfig = Http.get { url = UB.relative ["static", "api", "config"] []
+                         , expect = Http.expectJson HostConfigMsg hostsDecoder
+                         }
 
-configDecoder : Decoder Config
-configDecoder = J.map Config << J.field "servers" << J.list << J.map Host <| J.string
+hostsDecoder : Decoder (List Host)
+hostsDecoder = J.field "servers" << J.list << J.map Host <| J.string
 
-lockServer : Host -> Cmd Msg
-lockServer host = Http.get { url = UB.relative ["static", "api", "lock"] [UB.string "host" (fromHost host)]
-                             --url = UB.crossOrigin ("https://" ++ name) ["api", "lock"] []
-                           -- , body = Http.emptyBody
-                           , expect = Http.expectJson (LockDoneMsg host) statusDecoder
-                           }
+lockServer : Bool -> Host -> Cmd Msg
+lockServer mock host = Http.get { url = UB.relative ["static", "api", "lock"] [ UB.string "host" (fromHost host)
+                                                                              , paramFromBool "mock" mock
+                                                                              ]
+                                  --url = UB.crossOrigin ("https://" ++ name) ["api", "lock"] []
+                                --, body = Http.emptyBody
+                                , expect = Http.expectJson (LockDoneMsg host) statusDecoder
+                                }
 
-verifyServer : Host -> Cmd Msg
-verifyServer host = Http.get { url = UB.relative ["static", "api", "verify"] [UB.string "host" (fromHost host)]
-                             --url = UB.crossOrigin ("https://" ++ name) ["api", "lock"] []
-                           -- , body = Http.emptyBody
-                           , expect = Http.expectJson (VerifyDoneMsg host) statusDecoder
-                           }
+verifyServer : Bool -> Host -> Cmd Msg
+verifyServer mock host = Http.get { url = UB.relative ["static", "api", "verify"] [ UB.string "host" (fromHost host)
+                                                                                  , paramFromBool "mock" mock
+                                                                                  ]
+                                    --url = UB.crossOrigin ("https://" ++ name) ["api", "lock"] []
+                                  --, body = Http.emptyBody
+                                  , expect = Http.expectJson (VerifyDoneMsg host) statusDecoder
+                                  }
+
+paramFromBool : String -> Bool -> UB.QueryParameter
+paramFromBool name value = UB.string name (if value then "true" else "false")
 
 statusDecoder : Decoder String
 statusDecoder = J.field "status" <| J.string
