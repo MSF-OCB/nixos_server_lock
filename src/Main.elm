@@ -90,7 +90,7 @@ appendLog : Model -> String -> Model
 appendLog model msg = { model | log = model.log ++ [msg] }
 
 appendLogs : Model -> List String -> Model
-appendLogs model msgs = List.foldl (\s m -> appendLog m s) model msgs
+appendLogs = List.foldl (\s m -> appendLog m s)
 
 init : () -> (Model, Cmd Msg)
 init _ = (initModel, getConfig)
@@ -115,7 +115,7 @@ update msg model = case msg of
 gotConfig : Model -> HttpResult Config -> Model
 gotConfig model res = case res of
   Ok  cfg -> appendLogs { model | state = Ready cfg }
-                        ("Servers to lock:" :: (List.map (fromHost) cfg.hosts))
+                        ("Servers to lock:" :: (List.map fromHost cfg.hosts))
   Err err -> appendLog model << printError <| err
 
 gotConfirm : Model -> Config -> Model
@@ -127,7 +127,7 @@ gotConfirm model cfg = appendLog { model | state = Locking { total = List.length
                                  "Locking servers..."
 
 doLock : Config -> Cmd Msg
-doLock cfg = Cmd.batch << (List.map lockServer) <| cfg.hosts
+doLock = Cmd.batch << List.map lockServer << .hosts
 
 gotLockDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
 gotLockDone model host res =
@@ -138,8 +138,8 @@ gotLockDone model host res =
 
 gotVerifyDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
 gotVerifyDone model host res =
-  let newCmd _ progress = verifyDoneCmd progress
-      retryCmd          = verifyServer host
+  let newCmd _ = verifyDoneCmd
+      retryCmd = verifyServer host
       increaseVerifyingCount progress = { progress | verifyingProgress = progress.verifyingProgress + 1 }
   in gotLockingProgress model host res "Verify" retryCmd increaseVerifyingCount newCmd
 
@@ -181,7 +181,9 @@ formatProgressMsg : Host -> String -> String -> String
 formatProgressMsg host logHeader msg = logHeader ++ ": " ++ (fromHost host) ++ ": " ++ msg
 
 verifyDoneCmd : Progress -> Cmd Msg
-verifyDoneCmd progress = if progress.verifyingProgress == progress.total then getRandomCatGif else Cmd.none
+verifyDoneCmd progress = if progress.verifyingProgress == progress.total
+                         then getRandomCatGif
+                         else Cmd.none
 
 retry : Host -> Cmd Msg -> Cmd Msg
 retry host cmd = T.perform (\_ -> Retry host cmd) << P.sleep <| (retryDelaySec * 1000)

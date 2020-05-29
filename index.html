@@ -6292,27 +6292,23 @@ var $author$project$Main$lockServer = function (host) {
 					]))
 		});
 };
-var $author$project$Main$doLock = function (cfg) {
-	return A3(
+var $author$project$Main$doLock = A2(
+	$elm$core$Basics$composeL,
+	A2(
 		$elm$core$Basics$composeL,
 		$elm$core$Platform$Cmd$batch,
-		$elm$core$List$map($author$project$Main$lockServer),
-		cfg.as);
-};
+		$elm$core$List$map($author$project$Main$lockServer)),
+	function ($) {
+		return $.as;
+	});
 var $author$project$Main$Ready = function (a) {
 	return {$: 1, a: a};
 };
-var $author$project$Main$appendLogs = F2(
-	function (model, msgs) {
-		return A3(
-			$elm$core$List$foldl,
-			F2(
-				function (s, m) {
-					return A2($author$project$Main$appendLog, m, s);
-				}),
-			model,
-			msgs);
-	});
+var $author$project$Main$appendLogs = $elm$core$List$foldl(
+	F2(
+		function (s, m) {
+			return A2($author$project$Main$appendLog, m, s);
+		}));
 var $author$project$Main$printError = function (error) {
 	switch (error.$) {
 		case 0:
@@ -6564,10 +6560,9 @@ var $author$project$Main$verifyDoneCmd = function (progress) {
 var $author$project$Main$gotVerifyDone = F3(
 	function (model, host, res) {
 		var retryCmd = $author$project$Main$verifyServer(host);
-		var newCmd = F2(
-			function (_v0, progress) {
-				return $author$project$Main$verifyDoneCmd(progress);
-			});
+		var newCmd = function (_v0) {
+			return $author$project$Main$verifyDoneCmd;
+		};
 		var increaseVerifyingCount = function (progress) {
 			return _Utils_update(
 				progress,
