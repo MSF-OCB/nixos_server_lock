@@ -64,7 +64,7 @@ type alias Progress = { total : Int
                       , verifyingProgress: ProgressState
                       }
 
-type alias ProgressState = { count : Int }
+type alias ProgressState = Int
 
 type alias HttpResult res = Result Http.Error res
 
@@ -108,7 +108,7 @@ update msg model = case msg of
   Retry host cmd            -> (appendLog model <| "Retrying: " ++ (fromHost host), cmd)
   FoundGifMsg result        -> (gotGif model result, Cmd.none)
   UpdateConfirmText txt     -> case model.state of
-    AwaitConfirm cfg _ -> ( { model | state = AwaitConfirm cfg txt }, Cmd.none)
+    AwaitConfirm cfg _ -> ({ model | state = AwaitConfirm cfg txt }, Cmd.none)
     _                  -> (model, Cmd.none)
   Focused id                -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
 
@@ -120,8 +120,8 @@ gotConfig model res = case res of
 
 gotConfirm : Model -> Config -> Model
 gotConfirm model cfg = appendLog { model | state = Locking { total = List.length cfg.hosts
-                                                           , lockingProgress   = { count = 0 }
-                                                           , verifyingProgress = { count = 0 }
+                                                           , lockingProgress   = 0
+                                                           , verifyingProgress = 0
                                                            }
                                  }
                                  ("Locking servers...")
@@ -132,8 +132,7 @@ doLock cfg = Cmd.batch << (List.map lockServer) <| cfg.hosts
 gotLockDone : Model -> Host -> (HttpResult String) -> (Model, Cmd Msg)
 gotLockDone model host res = case res of
   Ok  host_status -> case model.state of
-    Locking progress -> let newProgressState = increaseCount progress.lockingProgress
-                            newModel = appendLog { model | state = Locking { progress | lockingProgress = newProgressState } }
+    Locking progress -> let newModel = appendLog { model | state = Locking { progress | lockingProgress = progress.lockingProgress + 1 } }
                                                  (formatProgressMsg host "Lock" host_status)
                         in (newModel, verifyServer host)
     _                -> (appendLog model "Model in unexpected state, ignoring...", Cmd.none)
@@ -152,20 +151,16 @@ gotVerifyDone model host res =
     Err err         -> (appendLog model << formatProgressMsg host "Verify" << printError <| err, retryCmd)
 
 newVerifiedModel : Model -> Progress -> Host -> (Model, Progress)
-newVerifiedModel model progress host = let newProgressState = increaseCount progress.verifyingProgress
-                                           newProgress = { progress | verifyingProgress = newProgressState }
+newVerifiedModel model progress host = let newProgress = { progress | verifyingProgress = progress.verifyingProgress + 1}
                                            newModel = appendLog { model | state = Locking newProgress }
                                                                 (formatProgressMsg host "Verify" "success")
                                        in (newModel, newProgress)
-
-increaseCount : ProgressState -> ProgressState
-increaseCount p = { p | count = p.count + 1}
 
 formatProgressMsg : Host -> String -> String -> String
 formatProgressMsg host header msg = header ++ ": " ++ (fromHost host) ++ ": " ++ msg
 
 verifyDoneCmd : Progress -> Cmd Msg
-verifyDoneCmd progress = if progress.verifyingProgress.count == progress.total then getRandomCatGif else Cmd.none
+verifyDoneCmd progress = if progress.verifyingProgress == progress.total then getRandomCatGif else Cmd.none
 
 retry : Host -> Cmd Msg -> Cmd Msg
 retry host cmd = T.perform (\_ -> Retry host cmd) << P.sleep <| (retryDelaySec * 1000)
@@ -258,8 +253,8 @@ viewProgress progress maybeUrl =
                   , Element.spacing 10
                   ]
                   [ column [] [ text ("Locking " ++ (String.fromInt progress.total) ++ " servers.")
-                              , text ("Locked: " ++ (String.fromInt progress.lockingProgress.count) ++ "/" ++ (String.fromInt progress.total))
-                              , text ("Verified: " ++ (String.fromInt progress.verifyingProgress.count) ++ "/" ++ (String.fromInt progress.total))
+                              , text ("Locked: " ++ (String.fromInt progress.lockingProgress) ++ "/" ++ (String.fromInt progress.total))
+                              , text ("Verified: " ++ (String.fromInt progress.verifyingProgress) ++ "/" ++ (String.fromInt progress.total))
                               ]
                   , Maybe.withDefault Element.none << Maybe.map renderImg <| maybeUrl
                   ]
