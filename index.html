@@ -6225,7 +6225,7 @@ var $author$project$Main$getConfig = $elm$http$Http$get(
 			_List_Nil)
 	});
 var $author$project$Main$Init = {$: 0};
-var $author$project$Main$initModel = {ad: _List_Nil, k: $author$project$Main$Init};
+var $author$project$Main$initModel = {ad: _List_Nil, n: $author$project$Main$Init};
 var $author$project$Main$init = function (_v0) {
 	return _Utils_Tuple2($author$project$Main$initModel, $author$project$Main$getConfig);
 };
@@ -6339,7 +6339,7 @@ var $author$project$Main$gotConfig = F2(
 				_Utils_update(
 					model,
 					{
-						k: $author$project$Main$Ready(cfg)
+						n: $author$project$Main$Ready(cfg)
 					}),
 				A2(
 					$elm$core$List$cons,
@@ -6363,7 +6363,7 @@ var $author$project$Main$gotConfirm = F2(
 			_Utils_update(
 				model,
 				{
-					k: $author$project$Main$Locking(
+					n: $author$project$Main$Locking(
 						{
 							ac: 0,
 							W: $elm$core$List$length(cfg.as),
@@ -6376,45 +6376,10 @@ var $author$project$Main$Done = F2(
 	function (a, b) {
 		return {$: 4, a: a, b: b};
 	});
-var $author$project$Main$gotGif = F2(
-	function (model, res) {
-		var _v0 = model.k;
-		if (_v0.$ === 3) {
-			var progress = _v0.a;
-			var newModel = function () {
-				if (!res.$) {
-					var url = res.a;
-					return _Utils_update(
-						model,
-						{
-							k: A2(
-								$author$project$Main$Done,
-								progress,
-								$elm$core$Maybe$Just(url))
-						});
-				} else {
-					var err = res.a;
-					return A3(
-						$elm$core$Basics$composeL,
-						$author$project$Main$appendLog(
-							_Utils_update(
-								model,
-								{
-									k: A2($author$project$Main$Done, progress, $elm$core$Maybe$Nothing)
-								})),
-						$author$project$Main$printError,
-						err);
-				}
-			}();
-			return A2($author$project$Main$appendLog, newModel, 'Reached final state.');
-		} else {
-			return A2($author$project$Main$appendLog, model, 'Model in unexpected state, ignoring...');
-		}
-	});
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $author$project$Main$assumeLocking = F2(
 	function (model, fun) {
-		var _v0 = model.k;
+		var _v0 = model.n;
 		if (_v0.$ === 3) {
 			var progress = _v0.a;
 			return fun(progress);
@@ -6423,6 +6388,42 @@ var $author$project$Main$assumeLocking = F2(
 				A2($author$project$Main$appendLog, model, 'Model in unexpected state, ignoring...'),
 				$elm$core$Platform$Cmd$none);
 		}
+	});
+var $author$project$Main$gotGif = F2(
+	function (model, res) {
+		return A2(
+			$author$project$Main$assumeLocking,
+			model,
+			function (progress) {
+				var newModel = function () {
+					if (!res.$) {
+						var url = res.a;
+						return _Utils_update(
+							model,
+							{
+								n: A2(
+									$author$project$Main$Done,
+									progress,
+									$elm$core$Maybe$Just(url))
+							});
+					} else {
+						var err = res.a;
+						return A3(
+							$elm$core$Basics$composeL,
+							$author$project$Main$appendLog(
+								_Utils_update(
+									model,
+									{
+										n: A2($author$project$Main$Done, progress, $elm$core$Maybe$Nothing)
+									})),
+							$author$project$Main$printError,
+							err);
+					}
+				}();
+				return _Utils_Tuple2(
+					A2($author$project$Main$appendLog, newModel, 'Reached final state.'),
+					$elm$core$Platform$Cmd$none);
+			});
 	});
 var $author$project$Main$formatProgressMsg = F3(
 	function (host, header, msg) {
@@ -6485,7 +6486,7 @@ var $author$project$Main$newProgressModel = F5(
 		var newModel = _Utils_update(
 			model,
 			{
-				k: $author$project$Main$Locking(newProgress)
+				n: $author$project$Main$Locking(newProgress)
 			});
 		return _Utils_Tuple2(
 			A2(
@@ -6630,7 +6631,7 @@ var $author$project$Main$update = F2(
 					_Utils_update(
 						model,
 						{
-							k: A2($author$project$Main$AwaitConfirm, cfg, '')
+							n: A2($author$project$Main$AwaitConfirm, cfg, '')
 						}),
 					$author$project$Main$tryFocus($author$project$Main$confirmationInputId));
 			case 1:
@@ -6657,19 +6658,17 @@ var $author$project$Main$update = F2(
 					cmd);
 			case 6:
 				var result = msg.a;
-				return _Utils_Tuple2(
-					A2($author$project$Main$gotGif, model, result),
-					$elm$core$Platform$Cmd$none);
+				return A2($author$project$Main$gotGif, model, result);
 			case 7:
 				var txt = msg.a;
-				var _v1 = model.k;
+				var _v1 = model.n;
 				if (_v1.$ === 2) {
 					var cfg = _v1.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
-								k: A2($author$project$Main$AwaitConfirm, cfg, txt)
+								n: A2($author$project$Main$AwaitConfirm, cfg, txt)
 							}),
 						$elm$core$Platform$Cmd$none);
 				} else {
@@ -13075,7 +13074,7 @@ var $mdgriffith$elm_ui$Element$Input$redistributeOver = F4(
 							return _Utils_update(
 								els,
 								{
-									l: A2($elm$core$List$cons, attr, els.l),
+									k: A2($elm$core$List$cons, attr, els.k),
 									a: A2($elm$core$List$cons, attr, els.a)
 								});
 						} else {
@@ -13106,7 +13105,7 @@ var $mdgriffith$elm_ui$Element$Input$redistributeOver = F4(
 							return _Utils_update(
 								els,
 								{
-									l: A2($elm$core$List$cons, attr, els.l),
+									k: A2($elm$core$List$cons, attr, els.k),
 									f: A2(
 										$elm$core$List$cons,
 										newHeight,
@@ -13119,14 +13118,14 @@ var $mdgriffith$elm_ui$Element$Input$redistributeOver = F4(
 						return _Utils_update(
 							els,
 							{
-								l: A2($elm$core$List$cons, attr, els.l),
+								k: A2($elm$core$List$cons, attr, els.k),
 								a: A2($elm$core$List$cons, attr, els.a)
 							});
 					case 10:
 						return _Utils_update(
 							els,
 							{
-								l: A2($elm$core$List$cons, attr, els.l),
+								k: A2($elm$core$List$cons, attr, els.k),
 								a: A2($elm$core$List$cons, attr, els.a)
 							});
 					case 2:
@@ -13184,7 +13183,7 @@ var $mdgriffith$elm_ui$Element$Input$redistribute = F3(
 	function (isMultiline, stacked, attrs) {
 		return function (redist) {
 			return {
-				l: $elm$core$List$reverse(redist.l),
+				k: $elm$core$List$reverse(redist.k),
 				b: $elm$core$List$reverse(redist.b),
 				f: $elm$core$List$reverse(redist.f),
 				a: $elm$core$List$reverse(redist.a),
@@ -13194,7 +13193,7 @@ var $mdgriffith$elm_ui$Element$Input$redistribute = F3(
 			A3(
 				$elm$core$List$foldl,
 				A2($mdgriffith$elm_ui$Element$Input$redistributeOver, isMultiline, stacked),
-				{l: _List_Nil, b: _List_Nil, f: _List_Nil, a: _List_Nil, Z: _List_Nil},
+				{k: _List_Nil, b: _List_Nil, f: _List_Nil, a: _List_Nil, Z: _List_Nil},
 				attrs));
 	});
 var $mdgriffith$elm_ui$Element$Input$renderBox = function (_v0) {
@@ -13496,7 +13495,7 @@ var $mdgriffith$elm_ui$Element$Input$textHelper = F3(
 											return _List_fromArray(
 												[
 													$mdgriffith$elm_ui$Element$behindContent(
-													A3($mdgriffith$elm_ui$Element$Input$renderPlaceholder, place, redistributed.l, textOptions.dg === ''))
+													A3($mdgriffith$elm_ui$Element$Input$renderPlaceholder, place, redistributed.k, textOptions.dg === ''))
 												]);
 										}
 									}()
@@ -13893,7 +13892,7 @@ var $author$project$Main$viewElement = function (model) {
 				$author$project$Main$printLog(model)
 			]),
 		function () {
-			var _v0 = model.k;
+			var _v0 = model.n;
 			switch (_v0.$) {
 				case 0:
 					return A2(

@@ -106,7 +106,7 @@ update msg model = case msg of
   LockDoneMsg host result   -> gotLockDone model host result
   VerifyDoneMsg host result -> gotVerifyDone model host result
   Retry host cmd            -> (appendLog model <| "Retrying: " ++ (fromHost host), cmd)
-  FoundGifMsg result        -> (gotGif model result, Cmd.none)
+  FoundGifMsg result        -> gotGif model result
   UpdateConfirmText txt     -> case model.state of
     AwaitConfirm cfg _ -> ({ model | state = AwaitConfirm cfg txt }, Cmd.none)
     _                  -> (model, Cmd.none)
@@ -124,7 +124,7 @@ gotConfirm model cfg = appendLog { model | state = Locking { total = List.length
                                                            , verifyingProgress = 0
                                                            }
                                  }
-                                 ("Locking servers...")
+                                 "Locking servers..."
 
 doLock : Config -> Cmd Msg
 doLock cfg = Cmd.batch << (List.map lockServer) <| cfg.hosts
@@ -185,14 +185,12 @@ retry host cmd = T.perform (\_ -> Retry host cmd) << P.sleep <| (retryDelaySec *
 tryFocus : String -> Cmd Msg
 tryFocus id = T.attempt (\_ -> Focused id) (Dom.focus id)
 
-gotGif : Model -> (HttpResult Url) -> Model
-gotGif model res = case model.state of
-  Locking progress ->
-    let newModel = case res of
-                     Ok  url ->           { model | state = Done progress (Maybe.Just url) }
-                     Err err -> appendLog { model | state = Done progress Maybe.Nothing } << printError <| err
-    in appendLog newModel "Reached final state."
-  _               -> appendLog model "Model in unexpected state, ignoring..."
+gotGif : Model -> (HttpResult Url) -> (Model, Cmd Msg)
+gotGif model res = assumeLocking model (\progress ->
+  let newModel = case res of
+                   Ok  url ->           { model | state = Done progress (Maybe.Just url) }
+                   Err err -> appendLog { model | state = Done progress Maybe.Nothing } << printError <| err
+  in (appendLog newModel "Reached final state.", Cmd.none))
 
 subscriptions : Model -> Sub Msg
 subscriptions model = Sub.none
