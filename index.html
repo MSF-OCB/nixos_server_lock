@@ -6225,7 +6225,7 @@ var $author$project$Main$getConfig = $elm$http$Http$get(
 			_List_Nil)
 	});
 var $author$project$Main$Init = {$: 0};
-var $author$project$Main$initModel = {ad: _List_Nil, i: $author$project$Main$Init};
+var $author$project$Main$initModel = {ad: _List_Nil, k: $author$project$Main$Init};
 var $author$project$Main$init = function (_v0) {
 	return _Utils_Tuple2($author$project$Main$initModel, $author$project$Main$getConfig);
 };
@@ -6339,7 +6339,7 @@ var $author$project$Main$gotConfig = F2(
 				_Utils_update(
 					model,
 					{
-						i: $author$project$Main$Ready(cfg)
+						k: $author$project$Main$Ready(cfg)
 					}),
 				A2(
 					$elm$core$List$cons,
@@ -6363,7 +6363,7 @@ var $author$project$Main$gotConfirm = F2(
 			_Utils_update(
 				model,
 				{
-					i: $author$project$Main$Locking(
+					k: $author$project$Main$Locking(
 						{
 							ac: 0,
 							W: $elm$core$List$length(cfg.as),
@@ -6378,7 +6378,7 @@ var $author$project$Main$Done = F2(
 	});
 var $author$project$Main$gotGif = F2(
 	function (model, res) {
-		var _v0 = model.i;
+		var _v0 = model.k;
 		if (_v0.$ === 3) {
 			var progress = _v0.a;
 			var newModel = function () {
@@ -6387,7 +6387,7 @@ var $author$project$Main$gotGif = F2(
 					return _Utils_update(
 						model,
 						{
-							i: A2(
+							k: A2(
 								$author$project$Main$Done,
 								progress,
 								$elm$core$Maybe$Just(url))
@@ -6400,7 +6400,7 @@ var $author$project$Main$gotGif = F2(
 							_Utils_update(
 								model,
 								{
-									i: A2($author$project$Main$Done, progress, $elm$core$Maybe$Nothing)
+									k: A2($author$project$Main$Done, progress, $elm$core$Maybe$Nothing)
 								})),
 						$author$project$Main$printError,
 						err);
@@ -6411,11 +6411,36 @@ var $author$project$Main$gotGif = F2(
 			return A2($author$project$Main$appendLog, model, 'Model in unexpected state, ignoring...');
 		}
 	});
+var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
+var $author$project$Main$assumeLocking = F2(
+	function (model, fun) {
+		var _v0 = model.k;
+		if (_v0.$ === 3) {
+			var progress = _v0.a;
+			return fun(progress);
+		} else {
+			return _Utils_Tuple2(
+				A2($author$project$Main$appendLog, model, 'Model in unexpected state, ignoring...'),
+				$elm$core$Platform$Cmd$none);
+		}
+	});
 var $author$project$Main$formatProgressMsg = F3(
 	function (host, header, msg) {
 		return header + (': ' + ($author$project$Main$fromHost(host) + (': ' + msg)));
 	});
-var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
+var $author$project$Main$progressError = F5(
+	function (model, host, header, retryCmd, err) {
+		return _Utils_Tuple2(
+			A3(
+				$elm$core$Basics$composeL,
+				A2(
+					$elm$core$Basics$composeL,
+					$author$project$Main$appendLog(model),
+					A2($author$project$Main$formatProgressMsg, host, header)),
+				$author$project$Main$printError,
+				err),
+			retryCmd);
+	});
 var $author$project$Main$Retry = F2(
 	function (a, b) {
 		return {$: 5, a: a, b: b};
@@ -6432,6 +6457,48 @@ var $author$project$Main$retry = F2(
 				}),
 			$elm$core$Process$sleep,
 			$author$project$Main$retryDelaySec * 1000);
+	});
+var $author$project$Main$gotLockingProgress = F6(
+	function (model, host, result, header, retryCmd, mkProgressModel) {
+		var doRetry = A2($author$project$Main$retry, host, retryCmd);
+		if (!result.$) {
+			var host_status = result.a;
+			return (host_status === 'OK') ? A2($author$project$Main$assumeLocking, model, mkProgressModel) : _Utils_Tuple2(
+				A2(
+					$author$project$Main$appendLog,
+					model,
+					A3($author$project$Main$formatProgressMsg, host, header, 'unsuccessful')),
+				doRetry);
+		} else {
+			var err = result.a;
+			return A5($author$project$Main$progressError, model, host, header, doRetry, err);
+		}
+	});
+var $author$project$Main$increaseLockingCount = function (progress) {
+	return _Utils_update(
+		progress,
+		{ac: progress.ac + 1});
+};
+var $author$project$Main$newProgressModel = F5(
+	function (model, progress, host, header, incr) {
+		var newProgress = incr(progress);
+		var newModel = _Utils_update(
+			model,
+			{
+				k: $author$project$Main$Locking(newProgress)
+			});
+		return _Utils_Tuple2(
+			A2(
+				$author$project$Main$appendLog,
+				newModel,
+				A3($author$project$Main$formatProgressMsg, host, header, 'success')),
+			newProgress);
+	});
+var $author$project$Main$newLockedModel = F3(
+	function (model, progress, host) {
+		var _v0 = A5($author$project$Main$newProgressModel, model, progress, host, 'Lock', $author$project$Main$increaseLockingCount);
+		var newModel = _v0.a;
+		return newModel;
 	});
 var $author$project$Main$VerifyDoneMsg = F2(
 	function (a, b) {
@@ -6459,61 +6526,28 @@ var $author$project$Main$verifyServer = function (host) {
 };
 var $author$project$Main$gotLockDone = F3(
 	function (model, host, res) {
-		if (!res.$) {
-			var host_status = res.a;
-			var _v1 = model.i;
-			if (_v1.$ === 3) {
-				var progress = _v1.a;
-				var newModel = A2(
-					$author$project$Main$appendLog,
-					_Utils_update(
-						model,
-						{
-							i: $author$project$Main$Locking(
-								_Utils_update(
-									progress,
-									{ac: progress.ac + 1}))
-						}),
-					A3($author$project$Main$formatProgressMsg, host, 'Lock', host_status));
+		return A6(
+			$author$project$Main$gotLockingProgress,
+			model,
+			host,
+			res,
+			'Lock',
+			$author$project$Main$lockServer(host),
+			function (progress) {
+				var newModel = A3($author$project$Main$newLockedModel, model, progress, host);
 				return _Utils_Tuple2(
 					newModel,
 					$author$project$Main$verifyServer(host));
-			} else {
-				return _Utils_Tuple2(
-					A2($author$project$Main$appendLog, model, 'Model in unexpected state, ignoring...'),
-					$elm$core$Platform$Cmd$none);
-			}
-		} else {
-			var err = res.a;
-			return _Utils_Tuple2(
-				A3(
-					$elm$core$Basics$composeL,
-					A2(
-						$elm$core$Basics$composeL,
-						$author$project$Main$appendLog(model),
-						A2($author$project$Main$formatProgressMsg, host, 'Lock')),
-					$author$project$Main$printError,
-					err),
-				A2(
-					$author$project$Main$retry,
-					host,
-					$author$project$Main$lockServer(host)));
-		}
+			});
 	});
+var $author$project$Main$increaseVerifyingCount = function (progress) {
+	return _Utils_update(
+		progress,
+		{X: progress.X + 1});
+};
 var $author$project$Main$newVerifiedModel = F3(
 	function (model, progress, host) {
-		var newProgress = _Utils_update(
-			progress,
-			{X: progress.X + 1});
-		var newModel = A2(
-			$author$project$Main$appendLog,
-			_Utils_update(
-				model,
-				{
-					i: $author$project$Main$Locking(newProgress)
-				}),
-			A3($author$project$Main$formatProgressMsg, host, 'Verify', 'success'));
-		return _Utils_Tuple2(newModel, newProgress);
+		return A5($author$project$Main$newProgressModel, model, progress, host, 'Verify', $author$project$Main$increaseVerifyingCount);
 	});
 var $author$project$Main$FoundGifMsg = function (a) {
 	return {$: 6, a: a};
@@ -6537,48 +6571,21 @@ var $author$project$Main$verifyDoneCmd = function (progress) {
 };
 var $author$project$Main$gotVerifyDone = F3(
 	function (model, host, res) {
-		var retryCmd = A2(
-			$author$project$Main$retry,
+		return A6(
+			$author$project$Main$gotLockingProgress,
+			model,
 			host,
-			$author$project$Main$verifyServer(host));
-		if (!res.$) {
-			var host_status = res.a;
-			var _v1 = model.i;
-			if (_v1.$ === 3) {
-				var progress = _v1.a;
-				if (host_status === 'OK') {
-					var _v2 = A3($author$project$Main$newVerifiedModel, model, progress, host);
-					var newModel = _v2.a;
-					var newProgress = _v2.b;
-					return _Utils_Tuple2(
-						newModel,
-						$author$project$Main$verifyDoneCmd(newProgress));
-				} else {
-					return _Utils_Tuple2(
-						A2(
-							$author$project$Main$appendLog,
-							model,
-							A3($author$project$Main$formatProgressMsg, host, 'Verify', 'verification unsuccessful')),
-						retryCmd);
-				}
-			} else {
+			res,
+			'Verify',
+			$author$project$Main$verifyServer(host),
+			function (progress) {
+				var _v0 = A3($author$project$Main$newVerifiedModel, model, progress, host);
+				var newModel = _v0.a;
+				var newProgress = _v0.b;
 				return _Utils_Tuple2(
-					A2($author$project$Main$appendLog, model, 'Model in unexpected state, ignoring...'),
-					$elm$core$Platform$Cmd$none);
-			}
-		} else {
-			var err = res.a;
-			return _Utils_Tuple2(
-				A3(
-					$elm$core$Basics$composeL,
-					A2(
-						$elm$core$Basics$composeL,
-						$author$project$Main$appendLog(model),
-						A2($author$project$Main$formatProgressMsg, host, 'Verify')),
-					$author$project$Main$printError,
-					err),
-				retryCmd);
-		}
+					newModel,
+					$author$project$Main$verifyDoneCmd(newProgress));
+			});
 	});
 var $author$project$Main$Focused = function (a) {
 	return {$: 8, a: a};
@@ -6624,7 +6631,7 @@ var $author$project$Main$update = F2(
 					_Utils_update(
 						model,
 						{
-							i: A2($author$project$Main$AwaitConfirm, cfg, '')
+							k: A2($author$project$Main$AwaitConfirm, cfg, '')
 						}),
 					$author$project$Main$tryFocus($author$project$Main$confirmationInputId));
 			case 1:
@@ -6656,14 +6663,14 @@ var $author$project$Main$update = F2(
 					$elm$core$Platform$Cmd$none);
 			case 7:
 				var txt = msg.a;
-				var _v1 = model.i;
+				var _v1 = model.k;
 				if (_v1.$ === 2) {
 					var cfg = _v1.a;
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
-								i: A2($author$project$Main$AwaitConfirm, cfg, txt)
+								k: A2($author$project$Main$AwaitConfirm, cfg, txt)
 							}),
 						$elm$core$Platform$Cmd$none);
 				} else {
@@ -13272,7 +13279,7 @@ var $mdgriffith$elm_ui$Element$Input$textHelper = F3(
 		var withDefaults = _Utils_ap($mdgriffith$elm_ui$Element$Input$defaultTextBoxStyle, attrs);
 		var redistributed = A3(
 			$mdgriffith$elm_ui$Element$Input$redistribute,
-			_Utils_eq(textInput.j, $mdgriffith$elm_ui$Element$Input$TextArea),
+			_Utils_eq(textInput.i, $mdgriffith$elm_ui$Element$Input$TextArea),
 			$mdgriffith$elm_ui$Element$Input$isStacked(textOptions.cF),
 			withDefaults);
 		var onlySpacing = function (attr) {
@@ -13284,7 +13291,7 @@ var $mdgriffith$elm_ui$Element$Input$textHelper = F3(
 			}
 		};
 		var heightConstrained = function () {
-			var _v7 = textInput.j;
+			var _v7 = textInput.i;
 			if (!_v7.$) {
 				var inputType = _v7.a;
 				return false;
@@ -13342,7 +13349,7 @@ var $mdgriffith$elm_ui$Element$Input$textHelper = F3(
 			$mdgriffith$elm_ui$Internal$Model$element,
 			$mdgriffith$elm_ui$Internal$Model$asEl,
 			function () {
-				var _v3 = textInput.j;
+				var _v3 = textInput.i;
 				if (!_v3.$) {
 					var inputType = _v3.a;
 					return $mdgriffith$elm_ui$Internal$Model$NodeName('input');
@@ -13352,7 +13359,7 @@ var $mdgriffith$elm_ui$Element$Input$textHelper = F3(
 			}(),
 			_Utils_ap(
 				function () {
-					var _v4 = textInput.j;
+					var _v4 = textInput.i;
 					if (!_v4.$) {
 						var inputType = _v4.a;
 						return _List_fromArray(
@@ -13396,7 +13403,7 @@ var $mdgriffith$elm_ui$Element$Input$textHelper = F3(
 					redistributed.f)),
 			$mdgriffith$elm_ui$Internal$Model$Unkeyed(_List_Nil));
 		var wrappedInput = function () {
-			var _v0 = textInput.j;
+			var _v0 = textInput.i;
 			if (_v0.$ === 1) {
 				return A4(
 					$mdgriffith$elm_ui$Internal$Model$element,
@@ -13516,7 +13523,7 @@ var $mdgriffith$elm_ui$Element$Input$text = $mdgriffith$elm_ui$Element$Input$tex
 	{
 		p: $elm$core$Maybe$Nothing,
 		u: false,
-		j: $mdgriffith$elm_ui$Element$Input$TextInputNode('text')
+		i: $mdgriffith$elm_ui$Element$Input$TextInputNode('text')
 	});
 var $author$project$Main$viewConfirm = F3(
 	function (model, cfg, txt) {
@@ -13887,7 +13894,7 @@ var $author$project$Main$viewElement = function (model) {
 				$author$project$Main$printLog(model)
 			]),
 		function () {
-			var _v0 = model.i;
+			var _v0 = model.k;
 			switch (_v0.$) {
 				case 0:
 					return A2(

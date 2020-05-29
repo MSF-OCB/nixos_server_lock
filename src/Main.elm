@@ -112,7 +112,7 @@ update msg model = case msg of
     _                  -> (model, Cmd.none)
   Focused id                -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
 
-gotConfig : Model -> (Result Http.Error Config) -> Model
+gotConfig : Model -> (HttpResult Config) -> Model
 gotConfig model res = case res of
   Ok  cfg -> appendLogs { model | state = Ready cfg }
                         ("Servers to lock:" :: (List.map (fromHost) cfg.hosts))
@@ -129,32 +129,50 @@ gotConfirm model cfg = appendLog { model | state = Locking { total = List.length
 doLock : Config -> Cmd Msg
 doLock cfg = Cmd.batch << (List.map lockServer) <| cfg.hosts
 
+gotLockingProgress : Model -> Host -> (HttpResult String) -> String -> Cmd Msg -> (Progress -> (Model, Cmd Msg)) -> (Model, Cmd Msg)
+gotLockingProgress model host result header retryCmd mkProgressModel =
+  let doRetry = retry host retryCmd
+  in case result of
+    Ok  host_status -> if host_status == "OK"
+                       then assumeLocking model mkProgressModel
+                       else (appendLog model (formatProgressMsg host header "unsuccessful"), doRetry)
+    Err err         -> progressError model host header doRetry err
+
+assumeLocking : Model -> (Progress -> (Model, Cmd Msg)) -> (Model, Cmd Msg)
+assumeLocking model fun = case model.state of
+  Locking progress -> fun progress
+  _                -> (appendLog model "Model in unexpected state, ignoring...", Cmd.none)
+
 gotLockDone : Model -> Host -> (HttpResult String) -> (Model, Cmd Msg)
-gotLockDone model host res = case res of
-  Ok  host_status -> case model.state of
-    Locking progress -> let newModel = appendLog { model | state = Locking { progress | lockingProgress = progress.lockingProgress + 1 } }
-                                                 (formatProgressMsg host "Lock" host_status)
-                        in (newModel, verifyServer host)
-    _                -> (appendLog model "Model in unexpected state, ignoring...", Cmd.none)
-  Err err         -> (appendLog model << formatProgressMsg host "Lock"  << printError <| err, retry host (lockServer host))
+gotLockDone model host res = gotLockingProgress model host res "Lock" (lockServer host)
+                                                (\progress -> let newModel = newLockedModel model progress host
+                                                              in (newModel, verifyServer host))
 
 gotVerifyDone : Model -> Host -> (HttpResult String) -> (Model, Cmd Msg)
-gotVerifyDone model host res =
-  let retryCmd = retry host (verifyServer host)
-  in case res of
-    Ok  host_status -> case model.state of
-      Locking progress -> if host_status == "OK"
-                          then let (newModel, newProgress) = newVerifiedModel model progress host
-                               in (newModel, verifyDoneCmd newProgress)
-                          else (appendLog model (formatProgressMsg host "Verify" "verification unsuccessful"), retryCmd)
-      _                -> (appendLog model "Model in unexpected state, ignoring...", Cmd.none)
-    Err err         -> (appendLog model << formatProgressMsg host "Verify" << printError <| err, retryCmd)
+gotVerifyDone model host res = gotLockingProgress model host res "Verify" (verifyServer host)
+                                                  (\progress -> let (newModel, newProgress) = newVerifiedModel model progress host
+                                                                in (newModel, verifyDoneCmd newProgress))
+
+newLockedModel : Model -> Progress -> Host -> Model
+newLockedModel model progress host = let (newModel, _) = newProgressModel model progress host "Lock" increaseLockingCount
+                                     in newModel
 
 newVerifiedModel : Model -> Progress -> Host -> (Model, Progress)
-newVerifiedModel model progress host = let newProgress = { progress | verifyingProgress = progress.verifyingProgress + 1}
-                                           newModel = appendLog { model | state = Locking newProgress }
-                                                                (formatProgressMsg host "Verify" "success")
-                                       in (newModel, newProgress)
+newVerifiedModel model progress host = newProgressModel model progress host "Verify" increaseVerifyingCount
+
+newProgressModel : Model -> Progress -> Host -> String -> (Progress -> Progress) -> (Model, Progress)
+newProgressModel model progress host header incr = let newProgress = incr progress
+                                                       newModel    = { model | state = Locking newProgress }
+                                                   in (appendLog newModel (formatProgressMsg host header "success"), newProgress)
+
+increaseLockingCount : Progress -> Progress
+increaseLockingCount progress = { progress | lockingProgress = progress.lockingProgress + 1 }
+
+increaseVerifyingCount : Progress -> Progress
+increaseVerifyingCount progress = { progress | verifyingProgress = progress.verifyingProgress + 1 }
+
+progressError : Model -> Host -> String -> Cmd Msg -> Http.Error -> (Model, Cmd Msg)
+progressError model host header retryCmd err = (appendLog model << formatProgressMsg host header  << printError <| err, retryCmd)
 
 formatProgressMsg : Host -> String -> String -> String
 formatProgressMsg host header msg = header ++ ": " ++ (fromHost host) ++ ": " ++ msg
