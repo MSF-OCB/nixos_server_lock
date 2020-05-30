@@ -8,7 +8,9 @@ import Http
 import Json.Decode as J exposing (Decoder)
 import Process     as P
 import Url.Builder as UB
+import SHA256      as SHA
 import Task        as T
+import Time
 
 import Element as Element exposing (Element, el, text, image, paragraph, column, row, fill, rgb255)
 import Element.Background as Background
@@ -87,11 +89,12 @@ type Msg = HostConfigMsg (HttpResult (List Host))
          | LockMsg
          | LockDoneMsg Host (HttpResult String)
          | VerifyDoneMsg Host (HttpResult String)
-         | Retry Host (Cmd Msg)
+         | RetryMsg Host (Cmd Msg)
+         | TagRequestMsg (Time.Posix -> Cmd Msg) Time.Posix
          | FoundGifMsg (HttpResult Url)
-         | UpdateConfirmText String
-         | UpdateMockCheckbox Bool
-         | Focused String
+         | UpdateConfirmTextMsg String
+         | UpdateMockCheckboxMsg Bool
+         | FocusedMsg String
 
 printError : Http.Error -> String
 printError error = case error of
@@ -105,7 +108,7 @@ appendLog : Model -> String -> Model
 appendLog model msg = { model | log = model.log ++ [msg] }
 
 appendLogs : Model -> List String -> Model
-appendLogs = List.foldl (\s m -> appendLog m s)
+appendLogs = List.foldl <| flip appendLog
 
 updateConfig : Model -> (Config -> Config) -> Model
 updateConfig model doUpdate = { model | config = doUpdate model.config }
@@ -121,15 +124,16 @@ initModel = { state  = Init
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case msg of
-  HostConfigMsg hosts       -> (gotHosts model hosts, Cmd.none)
-  LockMsg                   -> ({ model | state = AwaitConfirm "" }, tryFocus confirmationInputId)
-  LockDoneMsg host result   -> gotLockDone model host result
-  VerifyDoneMsg host result -> gotVerifyDone model host result
-  Retry host cmd            -> (appendLog model <| "Retrying: " ++ (fromHost host), cmd)
-  FoundGifMsg result        -> gotGif model result
-  UpdateConfirmText txt     -> gotConfirm txt model
-  UpdateMockCheckbox mock   -> (updateConfig model <| \oldConfig -> { oldConfig | mock = mock }, Cmd.none)
-  Focused id                -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
+  HostConfigMsg hosts          -> (gotHosts model hosts, Cmd.none)
+  LockMsg                      -> ({ model | state = AwaitConfirm "" }, tryFocus confirmationInputId)
+  LockDoneMsg host result      -> gotLockDone model host result
+  VerifyDoneMsg host result    -> gotVerifyDone model host result
+  RetryMsg host cmd            -> (appendLog model <| "Retrying: " ++ (fromHost host), cmd)
+  TagRequestMsg mkRequest time -> (model, mkRequest time)
+  FoundGifMsg result           -> gotGif model result
+  UpdateConfirmTextMsg txt     -> gotConfirm txt model
+  UpdateMockCheckboxMsg mock   -> (updateConfig model <| \oldConfig -> { oldConfig | mock = mock }, Cmd.none)
+  FocusedMsg id                -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
 
 gotHosts : Model -> HttpResult (List Host) -> Model
 gotHosts model res = case res of
@@ -151,19 +155,19 @@ gotConfirm confirmTxt model =
      else ({ model | state = AwaitConfirm confirmTxt }, Cmd.none)
 
 doLock : Config -> Cmd Msg
-doLock cfg = Cmd.batch << List.map (lockServer cfg.mock) <| cfg.hosts
+doLock cfg = Cmd.batch << List.map (flip lockServer cfg.mock) <| cfg.hosts
 
 gotLockDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
 gotLockDone model host res =
-  let mkNewCmd _ _ = verifyServer model.config.mock host
-      retryCmd     = lockServer   model.config.mock host
+  let mkNewCmd _ _ = verifyServer host model.config.mock
+      retryCmd     = lockServer   host model.config.mock
       increaseLockingCount progress = { progress | lockingProgress = progress.lockingProgress + 1 }
   in gotLockingProgress model host res retryCmd "Lock" increaseLockingCount mkNewCmd
 
 gotVerifyDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
 gotVerifyDone model host res =
   let mkNewCmd _ = verifyDoneCmd
-      retryCmd   = verifyServer model.config.mock host
+      retryCmd   = verifyServer host model.config.mock
       increaseVerifyingCount progress = { progress | verifyingProgress = progress.verifyingProgress + 1 }
   in gotLockingProgress model host res retryCmd "Verify" increaseVerifyingCount mkNewCmd
 
@@ -215,10 +219,10 @@ verifyDoneCmd progress = if progress.verifyingProgress == progress.total
                          else Cmd.none
 
 retry : Host -> Cmd Msg -> Cmd Msg
-retry host cmd = T.perform (\_ -> Retry host cmd) << P.sleep <| retryDelaySec * 1000
+retry host cmd = T.perform (\_ -> RetryMsg host cmd) << P.sleep <| retryDelaySec * 1000
 
 tryFocus : String -> Cmd Msg
-tryFocus id = T.attempt (\_ -> Focused id) <| Dom.focus id
+tryFocus id = T.attempt (\_ -> FocusedMsg id) <| Dom.focus id
 
 gotGif : Model -> HttpResult Url -> (Model, Cmd Msg)
 gotGif model res = assumeLocking model (\progress ->
@@ -274,13 +278,13 @@ viewConfirm model txt =
                              , Element.htmlAttribute << HA.id <| confirmationInputId
                              , Element.spacing 15
                              ]
-                             { onChange = UpdateConfirmText
+                             { onChange = UpdateConfirmTextMsg
                              , text = txt
                              , placeholder = Maybe.Nothing
                              , label = Input.labelAbove [] (paragraph [] [ text txtLabel ])
                              }
       mockCheckbox = Input.checkbox [ Element.spacing 15 ]
-                                    { onChange = UpdateMockCheckbox
+                                    { onChange = UpdateMockCheckboxMsg
                                     , icon = Input.defaultCheckbox
                                     , checked = model.config.mock
                                     , label = Input.labelRight [ Element.width fill ] <| paragraph [] [ text mockLabel ]
@@ -361,26 +365,62 @@ getHostConfig = Http.get { url = UB.relative ["static", "api", "config"] []
 hostsDecoder : Decoder (List Host)
 hostsDecoder = J.field "servers" << J.list << J.map Host <| J.string
 
-lockServer : Bool -> Host -> Cmd Msg
-lockServer mock host = Http.get { url = UB.relative ["static", "api", "lock"] [ UB.string "host" (fromHost host)
-                                                                              , paramFromBool "mock" mock
-                                                                              ]
-                                  --url = UB.crossOrigin ("https://" ++ name) ["api", "lock"] []
-                                --, body = Http.emptyBody
-                                , expect = Http.expectJson (LockDoneMsg host) statusDecoder
-                                }
+-- Tag a request with a key based off the current time
+-- See the paramFromTime function
+tagRequest : (Time.Posix -> Cmd Msg) -> Cmd Msg
+tagRequest mkRequest = T.perform (TagRequestMsg mkRequest) Time.now
 
-verifyServer : Bool -> Host -> Cmd Msg
-verifyServer mock host = Http.get { url = UB.relative ["static", "api", "verify"] [ UB.string "host" (fromHost host)
-                                                                                  , paramFromBool "mock" mock
-                                                                                  ]
-                                    --url = UB.crossOrigin ("https://" ++ name) ["api", "lock"] []
-                                  --, body = Http.emptyBody
-                                  , expect = Http.expectJson (VerifyDoneMsg host) statusDecoder
-                                  }
+lockServer : Host -> Bool -> Cmd Msg
+lockServer host mock = tagRequest <| doLockServer host mock
+
+doLockServer : Host -> Bool -> Time.Posix -> Cmd Msg
+doLockServer host mock time = doLockGet host mock time ["lock"] (LockDoneMsg host)
+
+verifyServer : Host -> Bool -> Cmd Msg
+verifyServer host mock = tagRequest <| doVerifyServer host mock
+
+doVerifyServer : Host -> Bool -> Time.Posix -> Cmd Msg
+doVerifyServer host mock time = doLockGet host mock time ["verify"] (VerifyDoneMsg host)
+
+-- TODO: only for the testing API from the demo. Replace with doLockPost
+doLockGet : Host -> Bool -> Time.Posix -> List String -> (HttpResult String -> Msg) -> Cmd Msg
+doLockGet host mock time path mkMsg =
+  let queryString = [ UB.string "host" <| fromHost host
+                    , paramFromBool "mock" mock
+                    , paramFromTime "key" time
+                    ]
+      url = UB.relative ([ "static", "api" ] ++ path) queryString
+  in Http.get { url = url
+              , expect = Http.expectJson mkMsg statusDecoder
+              }
+
+doLockPost : Host -> Bool -> Time.Posix -> List String -> (HttpResult String -> Msg) -> Cmd Msg
+doLockPost host mock time path mkMsg =
+  let url = UB.crossOrigin ("https://" ++ (fromHost host))
+                           ("api" :: path)
+                           [ paramFromBool "mock" mock
+                           , paramFromTime "key" time
+                           ]
+  in Http.post { url = url
+               , body = Http.emptyBody
+               , expect = Http.expectJson mkMsg statusDecoder
+               }
 
 paramFromBool : String -> Bool -> UB.QueryParameter
 paramFromBool name value = UB.string name <| if value then "true" else "false"
+
+-- Tag a request with a key based off the current time which can be validated in the backend.
+-- We divide by 2000 to have windows with a width of 2 seconds in which a request can be send,
+-- and we can accept requests with a key corresponding to the previous window to avoid
+-- edge cases when a request is sent right before a new window starts.
+-- This validation of the key will serve as a basic protection against curious employees.
+paramFromTime : String -> Time.Posix -> UB.QueryParameter
+paramFromTime name time =
+  UB.string name
+    << SHA.toHex
+    << SHA.fromString
+    << String.fromInt
+    <| Time.posixToMillis time // 2000
 
 statusDecoder : Decoder String
 statusDecoder = J.field "status" J.string
