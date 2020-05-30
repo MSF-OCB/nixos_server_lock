@@ -6254,7 +6254,10 @@ var $author$project$Main$fromHost = function (_v0) {
 var $author$project$Main$Locking = function (a) {
 	return {$: 3, a: a};
 };
-var $author$project$Main$confirmationInputTriggerText = 'YES';
+var $author$project$Main$confirmationTriggerText = 'YES';
+var $author$project$Main$confirmationTriggered = function (input) {
+	return _Utils_eq(input, $author$project$Main$confirmationTriggerText);
+};
 var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $author$project$Main$LockDoneMsg = F2(
 	function (a, b) {
@@ -6330,7 +6333,7 @@ var $author$project$Main$gotConfirm = F2(
 				});
 		};
 		var addLog = A2($author$project$Main$flip, $author$project$Main$appendLog, 'Locking the servers...');
-		return _Utils_eq(confirmTxt, $author$project$Main$confirmationInputTriggerText) ? _Utils_Tuple2(
+		return $author$project$Main$confirmationTriggered(confirmTxt) ? _Utils_Tuple2(
 			A3($elm$core$Basics$composeL, addLog, setLocking, model),
 			$author$project$Main$doLock(model.n)) : _Utils_Tuple2(
 			_Utils_update(
@@ -6462,6 +6465,9 @@ var $author$project$Main$formatProgressMsg = F3(
 	function (host, logHeader, msg) {
 		return logHeader + (': ' + ($author$project$Main$fromHost(host) + (': ' + msg)));
 	});
+var $author$project$Main$hostStatusOK = function (status) {
+	return status === 'OK';
+};
 var $author$project$Main$newProgressModel = F5(
 	function (model, progress, doLog, incr, mkNewCmd) {
 		var newProgress = incr(progress);
@@ -6521,8 +6527,8 @@ var $author$project$Main$gotLockingProgress = F7(
 			return A5($author$project$Main$newProgressModel, model, progress, doLog, incrProgress, mkNewCmd);
 		};
 		if (!result.$) {
-			var host_status = result.a;
-			return (host_status === 'OK') ? A2($author$project$Main$assumeLocking, model, ifOK) : ifNOK;
+			var hostStatus = result.a;
+			return $author$project$Main$hostStatusOK(hostStatus) ? A2($author$project$Main$assumeLocking, model, ifOK) : ifNOK;
 		} else {
 			var err = result.a;
 			return A4($author$project$Main$progressError, model, doRetry, err, doLog);
@@ -13787,7 +13793,7 @@ var $mdgriffith$elm_ui$Element$Input$text = $mdgriffith$elm_ui$Element$Input$tex
 	});
 var $author$project$Main$viewConfirm = F2(
 	function (model, txt) {
-		var txtLabel = 'Please type ' + ($author$project$Main$confirmationInputTriggerText + ' below to confirm');
+		var txtLabel = 'Please type ' + ($author$project$Main$confirmationTriggerText + ' below to confirm');
 		var title = 'Confirmation required';
 		var textInput = A2(
 			$mdgriffith$elm_ui$Element$Input$text,

@@ -29,6 +29,18 @@ main = Browser.element { init = init
 retryDelaySec : Float
 retryDelaySec = 15
 
+confirmationInputId : String
+confirmationInputId = "confirmationInputTextId"
+
+confirmationTriggerText : String
+confirmationTriggerText = "YES"
+
+confirmationTriggered : String -> Bool
+confirmationTriggered input = input == confirmationTriggerText
+
+hostStatusOK : String -> Bool
+hostStatusOK status = status == "OK"
+
 buttonUrl : String
 buttonUrl = UB.relative ["assets", "red-button.png"] []
 
@@ -37,12 +49,6 @@ backgroundColor = rgb255 100 50 50
 
 fontColor : Element.Color
 fontColor = rgb255 200 220 220
-
-confirmationInputId : String
-confirmationInputId = "confirmationInputTextId"
-
-confirmationInputTriggerText : String
-confirmationInputTriggerText = "YES"
 
 type Url  = Url  String
 type Host = Host String
@@ -140,7 +146,7 @@ gotConfirm confirmTxt model =
                                            }
                      }
       addLog = flip appendLog "Locking the servers..."
-  in if confirmTxt == confirmationInputTriggerText
+  in if confirmationTriggered confirmTxt
      then (addLog << setLocking <| model, doLock model.config)
      else ({ model | state = AwaitConfirm confirmTxt }, Cmd.none)
 
@@ -175,10 +181,10 @@ gotLockingProgress model host result retryCmd logHeader incrProgress mkNewCmd =
       ifOK progress = newProgressModel model progress doLog incrProgress mkNewCmd
       ifNOK = (appendLog model <| doLog "unsuccessful", doRetry)
   in case result of
-    Ok  host_status -> if host_status == "OK"
-                       then assumeLocking model ifOK
-                       else ifNOK
-    Err err         -> progressError model doRetry err doLog
+    Ok  hostStatus -> if hostStatusOK hostStatus
+                      then assumeLocking model ifOK
+                      else ifNOK
+    Err err        -> progressError model doRetry err doLog
 
 assumeLocking : Model -> (Progress -> (Model, Cmd Msg)) -> (Model, Cmd Msg)
 assumeLocking model mkNewModel = case model.state of
@@ -262,7 +268,7 @@ viewReady model =
 viewConfirm : Model -> String -> Element Msg
 viewConfirm model txt =
   let title = "Confirmation required"
-      txtLabel = "Please type " ++ confirmationInputTriggerText ++ " below to confirm"
+      txtLabel = "Please type " ++ confirmationTriggerText ++ " below to confirm"
       mockLabel = "Do a test run without actually locking the servers, only uncheck this in a real emergency."
       textInput = Input.text [ Font.color (rgb255 0 0 0)
                              , Element.htmlAttribute << HA.id <| confirmationInputId
