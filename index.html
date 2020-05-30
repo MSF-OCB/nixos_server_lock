@@ -6472,11 +6472,10 @@ var $author$project$Main$newProgressModel = F5(
 				p: $author$project$Main$Locking(newProgress)
 			});
 		return _Utils_Tuple2(
-			A3(
-				$elm$core$Basics$composeL,
-				$author$project$Main$appendLog(newModel),
-				A2($author$project$Main$formatProgressMsg, host, logHeader),
-				'success'),
+			A2(
+				$author$project$Main$appendLog,
+				newModel,
+				A3($author$project$Main$formatProgressMsg, host, logHeader, 'success')),
 			newProgress);
 	});
 var $author$project$Main$progressError = F5(
@@ -6525,11 +6524,10 @@ var $author$project$Main$gotLockingProgress = F7(
 						newModel,
 						A2(newCmd, newModel, newProgress));
 				}) : _Utils_Tuple2(
-				A3(
-					$elm$core$Basics$composeL,
-					$author$project$Main$appendLog(model),
-					A2($author$project$Main$formatProgressMsg, host, logHeader),
-					'unsuccessful'),
+				A2(
+					$author$project$Main$appendLog,
+					model,
+					A3($author$project$Main$formatProgressMsg, host, logHeader, 'unsuccessful')),
 				doRetry);
 		} else {
 			var err = result.a;
@@ -13888,6 +13886,10 @@ var $author$project$Main$viewConfirm = F2(
 	});
 var $mdgriffith$elm_ui$Internal$Flag$fontWeight = $mdgriffith$elm_ui$Internal$Flag$flag(13);
 var $mdgriffith$elm_ui$Element$Font$bold = A2($mdgriffith$elm_ui$Internal$Model$Class, $mdgriffith$elm_ui$Internal$Flag$fontWeight, $mdgriffith$elm_ui$Internal$Style$classes.b5);
+var $author$project$Main$printProgress = F3(
+	function (progress, count, total) {
+		return A3($elm$core$Basics$composeL, $elm$core$String$fromInt, count, progress) + ('/' + A3($elm$core$Basics$composeL, $elm$core$String$fromInt, total, progress));
+	});
 var $elm$html$Html$Attributes$alt = $elm$html$Html$Attributes$stringProperty('alt');
 var $elm$html$Html$Attributes$src = function (url) {
 	return A2(
@@ -13977,7 +13979,7 @@ var $author$project$Main$viewProgress = F3(
 					_List_fromArray(
 						[$mdgriffith$elm_ui$Element$Font$bold]),
 					$mdgriffith$elm_ui$Element$text('test mode')),
-					$mdgriffith$elm_ui$Element$text(' no servers have actually been disabled!)')
+					$mdgriffith$elm_ui$Element$text(', no servers have actually been disabled!)')
 				])) : $mdgriffith$elm_ui$Element$none;
 		return A2(
 			$mdgriffith$elm_ui$Element$column,
@@ -14018,7 +14020,15 @@ var $author$project$Main$viewProgress = F3(
 									_List_fromArray(
 										[
 											$mdgriffith$elm_ui$Element$text(
-											'Locked: ' + ($elm$core$String$fromInt(progress.af) + ('/' + $elm$core$String$fromInt(progress.Y))))
+											'Locked: ' + A3(
+												$author$project$Main$printProgress,
+												progress,
+												function ($) {
+													return $.af;
+												},
+												function ($) {
+													return $.Y;
+												}))
 										])),
 									A2(
 									$mdgriffith$elm_ui$Element$paragraph,
@@ -14026,7 +14036,15 @@ var $author$project$Main$viewProgress = F3(
 									_List_fromArray(
 										[
 											$mdgriffith$elm_ui$Element$text(
-											'Verified: ' + ($elm$core$String$fromInt(progress.Z) + ('/' + $elm$core$String$fromInt(progress.Y))))
+											'Verified: ' + A3(
+												$author$project$Main$printProgress,
+												progress,
+												function ($) {
+													return $.Z;
+												},
+												function ($) {
+													return $.Y;
+												}))
 										])),
 									mockParagraph
 								])),

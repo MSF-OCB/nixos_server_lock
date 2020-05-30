@@ -124,13 +124,13 @@ update msg model = case msg of
   Retry host cmd            -> (appendLog model << (++) "Retrying: " << fromHost <| host, cmd)
   FoundGifMsg result        -> gotGif model result
   UpdateConfirmText txt     -> gotConfirm txt model
-  UpdateMockCheckbox mock   -> (updateConfig model (\oldConfig -> { oldConfig | mock = mock }), Cmd.none)
+  UpdateMockCheckbox mock   -> (updateConfig model <| \oldConfig -> { oldConfig | mock = mock }, Cmd.none)
   Focused id                -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
 
 gotConfig : Model -> HttpResult (List Host) -> Model
 gotConfig model res = case res of
-  Ok  hosts -> let addLogs  = flip appendLogs ("Servers to lock:" :: (List.map fromHost hosts))
-                   doConfig = flip updateConfig (\oldConfig -> { oldConfig | hosts = hosts })
+  Ok  hosts -> let addLogs  = flip appendLogs <| "Servers to lock:" :: (List.map fromHost hosts)
+                   doConfig = flip updateConfig <| \oldConfig -> { oldConfig | hosts = hosts }
                in addLogs << doConfig <| { model | state = Ready }
   Err err   -> appendLog model << printError <| err
 
@@ -152,7 +152,7 @@ doLock cfg = Cmd.batch << List.map (lockServer cfg.mock) <| cfg.hosts
 gotLockDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
 gotLockDone model host res =
   let newCmd _ _ = verifyServer model.config.mock host
-      retryCmd   = lockServer model.config.mock host
+      retryCmd   = lockServer   model.config.mock host
       increaseLockingCount progress = { progress | lockingProgress = progress.lockingProgress + 1 }
   in gotLockingProgress model host res "Lock" retryCmd increaseLockingCount newCmd
 
@@ -179,7 +179,7 @@ gotLockingProgress model host result logHeader retryCmd incrProgress newCmd =
                          let (newModel, newProgress) = newProgressModel model progress host logHeader incrProgress
                          in (newModel, newCmd newModel newProgress)
                        )
-                       else (appendLog model << formatProgressMsg host logHeader <| "unsuccessful", doRetry)
+                       else (appendLog model <| formatProgressMsg host logHeader "unsuccessful", doRetry)
     Err err         -> progressError model host logHeader doRetry err
 
 assumeLocking : Model -> (Progress -> (Model, Cmd Msg)) -> (Model, Cmd Msg)
@@ -191,7 +191,7 @@ newProgressModel : Model -> Progress -> Host -> String -> (Progress -> Progress)
 newProgressModel model progress host logHeader incr =
   let newProgress = incr progress
       newModel    = { model | state = Locking newProgress }
-  in (appendLog newModel << formatProgressMsg host logHeader <| "success", newProgress)
+  in (appendLog newModel <| formatProgressMsg host logHeader "success", newProgress)
 
 progressError : Model -> Host -> String -> Cmd Msg -> Http.Error -> (Model, Cmd Msg)
 progressError model host logHeader retryCmd err =
@@ -206,10 +206,10 @@ verifyDoneCmd progress = if progress.verifyingProgress == progress.total
                          else Cmd.none
 
 retry : Host -> Cmd Msg -> Cmd Msg
-retry host cmd = T.perform (\_ -> Retry host cmd) << P.sleep <| (retryDelaySec * 1000)
+retry host cmd = T.perform (\_ -> Retry host cmd) << P.sleep <| retryDelaySec * 1000
 
 tryFocus : String -> Cmd Msg
-tryFocus id = T.attempt (\_ -> Focused id) (Dom.focus id)
+tryFocus id = T.attempt (\_ -> Focused id) <| Dom.focus id
 
 gotGif : Model -> HttpResult Url -> (Model, Cmd Msg)
 gotGif model res = assumeLocking model (\progress ->
@@ -252,8 +252,8 @@ viewReady model =
          [ el [ Element.centerX ] <| paragraph [ Font.size 50 ] [ text "Secure the servers in your project" ]
          , el [ Element.centerX
               , Element.centerY
-              ] <|
-              button "Lock the servers" buttonUrl LockMsg
+              ]
+              <| button "Lock the servers" buttonUrl LockMsg
          ]
 
 viewConfirm : Model -> String -> Element Msg
@@ -274,7 +274,7 @@ viewConfirm model txt =
                                     { onChange = UpdateMockCheckbox
                                     , icon = Input.defaultCheckbox
                                     , checked = model.config.mock
-                                    , label = Input.labelRight [ Element.width fill ] (paragraph [] [ text mockLabel ])
+                                    , label = Input.labelRight [ Element.width fill ] <| paragraph [] [ text mockLabel ]
                                     }
   in column [ Element.width fill
             , Element.height fill
@@ -295,7 +295,7 @@ viewProgress model progress maybeUrl =
   let mockParagraph = if model.config.mock
                       then paragraph [] [ text "(Beware: you selected "
                                         , el [ Font.bold ] (text "test mode")
-                                        , text " no servers have actually been disabled!)" ]
+                                        , text ", no servers have actually been disabled!)" ]
                       else Element.none
   in column [ Element.width fill
             , Element.height fill
@@ -305,14 +305,18 @@ viewProgress model progress maybeUrl =
                      , Element.centerY
                      , Element.spacing 10
                      ]
-                     [ column [] [ paragraph [] [ text ("Locking " ++ (String.fromInt progress.total) ++ " servers.") ]
-                                 , paragraph [] [ text ("Locked: " ++ (String.fromInt progress.lockingProgress) ++ "/" ++ (String.fromInt progress.total)) ]
-                                 , paragraph [] [ text ("Verified: " ++ (String.fromInt progress.verifyingProgress) ++ "/" ++ (String.fromInt progress.total)) ]
+                     [ column [] [ paragraph [] [ text <| "Locking "   ++ (String.fromInt progress.total) ++ " servers." ]
+                                 , paragraph [] [ text <| "Locked: "   ++ (printProgress progress .lockingProgress .total) ]
+                                 , paragraph [] [ text <| "Verified: " ++ (printProgress progress .verifyingProgress .total) ]
                                  , mockParagraph
                                  ]
                      , Maybe.withDefault Element.none << Maybe.map renderImg <| maybeUrl
                      ]
             ]
+
+printProgress : Progress -> (Progress -> Int) -> (Progress -> Int) -> String
+printProgress progress count total =
+  (String.fromInt << count <| progress) ++ "/" ++ (String.fromInt << total <| progress)
 
 renderImg : Url -> Element Msg
 renderImg (Url url) = column [ Element.width fill
@@ -367,10 +371,10 @@ verifyServer mock host = Http.get { url = UB.relative ["static", "api", "verify"
                                   }
 
 paramFromBool : String -> Bool -> UB.QueryParameter
-paramFromBool name value = UB.string name (if value then "true" else "false")
+paramFromBool name value = UB.string name <| if value then "true" else "false"
 
 statusDecoder : Decoder String
-statusDecoder = J.field "status" <| J.string
+statusDecoder = J.field "status" J.string
 
 getRandomCatGif : Cmd Msg
 getRandomCatGif = Http.get { url = "https://api.giphy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC&tag=cat"
