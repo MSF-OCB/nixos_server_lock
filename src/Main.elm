@@ -30,7 +30,7 @@ retryDelaySec : Float
 retryDelaySec = 15
 
 buttonUrl : String
-buttonUrl = UB.relative ["static", "red-button.png"] []
+buttonUrl = UB.relative ["assets", "red-button.png"] []
 
 backgroundColor : Element.Color
 backgroundColor = rgb255 100 50 50
