@@ -10,7 +10,7 @@ import Process     as P
 import Url.Builder as UB
 import Task        as T
 
-import Element as Element exposing (Element, el, text, image, column, row, fill, rgb255)
+import Element as Element exposing (Element, el, text, image, paragraph, column, row, fill, rgb255)
 import Element.Background as Background
 import Element.Border     as Border
 import Element.Events     as Events
@@ -40,6 +40,9 @@ fontColor = rgb255 200 220 220
 
 confirmationInputId : String
 confirmationInputId = "confirmationInputTextId"
+
+confirmationInputTriggerText : String
+confirmationInputTriggerText = "YES"
 
 type Url  = Url  String
 type Host = Host String
@@ -75,14 +78,13 @@ type alias ProgressState = Int
 type alias HttpResult res = Result Http.Error res
 
 type Msg = HostConfigMsg (HttpResult (List Host))
-         | ConfirmMsg
          | LockMsg
          | LockDoneMsg Host (HttpResult String)
          | VerifyDoneMsg Host (HttpResult String)
          | Retry Host (Cmd Msg)
          | FoundGifMsg (HttpResult Url)
          | UpdateConfirmText String
-         | MockCheckboxChanged Bool
+         | UpdateMockCheckbox Bool
          | Focused String
 
 printError : Http.Error -> String
@@ -117,31 +119,32 @@ update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case msg of
   HostConfigMsg hosts       -> (gotConfig model hosts, Cmd.none)
   LockMsg                   -> ({ model | state = AwaitConfirm "" }, tryFocus confirmationInputId)
-  ConfirmMsg                -> (gotConfirm model, doLock model.config)
   LockDoneMsg host result   -> gotLockDone model host result
   VerifyDoneMsg host result -> gotVerifyDone model host result
   Retry host cmd            -> (appendLog model << (++) "Retrying: " << fromHost <| host, cmd)
   FoundGifMsg result        -> gotGif model result
-  UpdateConfirmText txt     -> case model.state of
-    AwaitConfirm _ -> ({ model | state = AwaitConfirm txt }, Cmd.none)
-    _              -> (model, Cmd.none)
-  MockCheckboxChanged mock  -> (updateConfig model (\oldConfig -> { oldConfig | mock = mock }), Cmd.none)
+  UpdateConfirmText txt     -> gotConfirm txt model
+  UpdateMockCheckbox mock   -> (updateConfig model (\oldConfig -> { oldConfig | mock = mock }), Cmd.none)
   Focused id                -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
 
 gotConfig : Model -> HttpResult (List Host) -> Model
 gotConfig model res = case res of
-  Ok  hosts -> let doLogs   = flip appendLogs ("Servers to lock:" :: (List.map fromHost hosts))
+  Ok  hosts -> let addLogs  = flip appendLogs ("Servers to lock:" :: (List.map fromHost hosts))
                    doConfig = flip updateConfig (\oldConfig -> { oldConfig | hosts = hosts })
-               in doLogs << doConfig <| { model | state = Ready }
+               in addLogs << doConfig <| { model | state = Ready }
   Err err   -> appendLog model << printError <| err
 
-gotConfirm : Model -> Model
-gotConfirm model = appendLog { model | state = Locking { total = List.length model.config.hosts
-                                                       , lockingProgress   = 0
-                                                       , verifyingProgress = 0
-                                                       }
-                             }
-                             "Locking servers..."
+gotConfirm : String -> Model -> (Model, Cmd Msg)
+gotConfirm confirmTxt model =
+  let setLocking m = { m | state = Locking { total = List.length m.config.hosts
+                                           , lockingProgress   = 0
+                                           , verifyingProgress = 0
+                                           }
+                     }
+      addLog = flip appendLog "Locking the servers..."
+  in if confirmTxt == confirmationInputTriggerText
+     then (addLog << setLocking <| model, doLock model.config)
+     else ({ model | state = AwaitConfirm confirmTxt }, Cmd.none)
 
 doLock : Config -> Cmd Msg
 doLock cfg = Cmd.batch << List.map (lockServer cfg.mock) <| cfg.hosts
@@ -221,7 +224,6 @@ subscriptions model = Sub.none
 view : Model -> Html Msg
 view model = Element.layout [ Background.color backgroundColor
                             , Font.color fontColor
-                            , Font.size 50
                             , Element.width fill
                             , Element.height fill
                             , Element.padding 15
@@ -235,7 +237,7 @@ viewElement model =
      , printLog model
      ]
      ( case model.state of
-         Init              -> el [Font.size 30] ( text "Loading the app config..." )
+         Init              -> el [ Font.size 30 ] <| text "Loading the app config..."
          Ready             -> viewReady model
          AwaitConfirm txt  -> viewConfirm model txt
          Locking progress  -> viewProgress model progress Maybe.Nothing
@@ -247,94 +249,88 @@ viewReady model =
   column [ Element.width fill
          , Element.height fill
          ]
-         [ el [ Element.centerX ]
-              ( text "Secure the servers in your project" )
+         [ el [ Element.centerX ] <| paragraph [ Font.size 50 ] [ text "Secure the servers in your project" ]
          , el [ Element.centerX
               , Element.centerY
-              ]
-              ( button "Lock the servers" buttonUrl LockMsg )
+              ] <|
+              button "Lock the servers" buttonUrl LockMsg
          ]
 
 viewConfirm : Model -> String -> Element Msg
 viewConfirm model txt =
   let title = "Confirmation required"
-      confirmText = "YES"
-      txtLabel = "Please type " ++ confirmText ++ " below to confirm"
-      mockLabel = "Uncheck to disable test mode"
+      txtLabel = "Please type " ++ confirmationInputTriggerText ++ " below to confirm"
+      mockLabel = "Do a test run without actually locking the servers, only uncheck this in a real emergency."
       textInput = Input.text [ Font.color (rgb255 0 0 0)
                              , Element.htmlAttribute << HA.id <| confirmationInputId
                              , Element.spacing 15
                              ]
-                             { onChange = \s -> if s == confirmText
-                                                then ConfirmMsg
-                                                else UpdateConfirmText s
+                             { onChange = UpdateConfirmText
                              , text = txt
                              , placeholder = Maybe.Nothing
-                             , label = Input.labelAbove [] (text txtLabel)
+                             , label = Input.labelAbove [] (paragraph [] [ text txtLabel ])
                              }
       mockCheckbox = Input.checkbox [ Element.spacing 15 ]
-                                    { onChange = MockCheckboxChanged
+                                    { onChange = UpdateMockCheckbox
                                     , icon = Input.defaultCheckbox
                                     , checked = model.config.mock
-                                    , label = Input.labelRight [] (text mockLabel)
+                                    , label = Input.labelRight [ Element.width fill ] (paragraph [] [ text mockLabel ])
                                     }
   in column [ Element.width fill
             , Element.height fill
             ]
-            [ el [ Element.centerX ]
-                 ( text title )
+            [ el [ Element.centerX ] <| paragraph [ Font.size 50 ] [ text title ]
             , column [ Element.centerX
                      , Element.centerY
                      , Element.spacing 15
                      , Font.size 20
                      ]
-                     [ textInput
-                     , mockCheckbox
+                     [ mockCheckbox
+                     , textInput
                      ]
             ]
 
 viewProgress : Model -> Progress -> Maybe Url -> Element Msg
 viewProgress model progress maybeUrl =
-  column [ Element.width fill
-         , Element.height fill
-         , Font.size 20
-         ]
-         [ column [ Element.centerX
-                  , Element.centerY
-                  , Element.spacing 10
-                  ]
-                  [ column [] [ text ("Locking " ++ (String.fromInt progress.total) ++ " servers.")
-                              , text ("Locked: " ++ (String.fromInt progress.lockingProgress) ++ "/" ++ (String.fromInt progress.total))
-                              , text ("Verified: " ++ (String.fromInt progress.verifyingProgress) ++ "/" ++ (String.fromInt progress.total))
-                              ]
-                  , if model.config.mock
-                    then text ("(Beware: you selected test mode,\n no servers have actually been disabled!)")
-                    else Element.none
-                  , Maybe.withDefault Element.none << Maybe.map renderImg <| maybeUrl
-                  ]
-         ]
+  let mockParagraph = if model.config.mock
+                      then paragraph [] [ text "(Beware: you selected "
+                                        , el [ Font.bold ] (text "test mode")
+                                        , text " no servers have actually been disabled!)" ]
+                      else Element.none
+  in column [ Element.width fill
+            , Element.height fill
+            , Font.size 20
+            ]
+            [ column [ Element.centerX
+                     , Element.centerY
+                     , Element.spacing 10
+                     ]
+                     [ column [] [ paragraph [] [ text ("Locking " ++ (String.fromInt progress.total) ++ " servers.") ]
+                                 , paragraph [] [ text ("Locked: " ++ (String.fromInt progress.lockingProgress) ++ "/" ++ (String.fromInt progress.total)) ]
+                                 , paragraph [] [ text ("Verified: " ++ (String.fromInt progress.verifyingProgress) ++ "/" ++ (String.fromInt progress.total)) ]
+                                 , mockParagraph
+                                 ]
+                     , Maybe.withDefault Element.none << Maybe.map renderImg <| maybeUrl
+                     ]
+            ]
 
 renderImg : Url -> Element Msg
-renderImg (Url url) = column [ Element.centerX
-                             , Element.spacing 5
-                             ]
-                             [ text "We are done, have a cat."
-                             , image [Element.centerX]
+renderImg (Url url) = column [ Element.width fill
+                             , Element.spacing 5 ]
+                             [ paragraph [] [ text "We are done, have a cat." ]
+                             , image [ Element.centerX ]
                                      { src = url, description = "Funny cat, we're done!" }
                              ]
 
 printLog : Model -> Element.Attribute Msg
 printLog model =
-  Element.behindContent (el [ Element.height fill
-                            , Element.width fill
-                            , Font.size 10
-                            ]
-                            ( column [Element.alignBottom]
-                                     [ text "Debug log:\n"
-                                     , text << String.join "\n" <| model.log
-                                     ]
-                            )
-                        )
+  let formatLine msg = paragraph [] [ text msg ]
+      logLines = formatLine "Debug log:" :: List.map formatLine model.log
+  in Element.behindContent <| el [ Element.height fill
+                                 , Element.width fill
+                                 , Font.size 10
+                                 ]
+                           <| column [Element.alignBottom] logLines
 
 button : String -> String -> Msg -> Element Msg
 button label src onPress =
