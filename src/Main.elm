@@ -102,9 +102,7 @@ appendLogs : Model -> List String -> Model
 appendLogs = List.foldl (\s m -> appendLog m s)
 
 updateConfig : Model -> (Config -> Config) -> Model
-updateConfig model updateC =
-  let oldConfig = model.config
-  in { model | config = updateC oldConfig }
+updateConfig model doUpdate = { model | config = doUpdate model.config }
 
 init : () -> (Model, Cmd Msg)
 init _ = (initModel, getHostConfig)
@@ -117,21 +115,21 @@ initModel = { state  = Init
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case msg of
-  HostConfigMsg hosts       -> (gotConfig model hosts, Cmd.none)
+  HostConfigMsg hosts       -> (gotHosts model hosts, Cmd.none)
   LockMsg                   -> ({ model | state = AwaitConfirm "" }, tryFocus confirmationInputId)
   LockDoneMsg host result   -> gotLockDone model host result
   VerifyDoneMsg host result -> gotVerifyDone model host result
-  Retry host cmd            -> (appendLog model << (++) "Retrying: " << fromHost <| host, cmd)
+  Retry host cmd            -> (appendLog model <| "Retrying: " ++ (fromHost host), cmd)
   FoundGifMsg result        -> gotGif model result
   UpdateConfirmText txt     -> gotConfirm txt model
   UpdateMockCheckbox mock   -> (updateConfig model <| \oldConfig -> { oldConfig | mock = mock }, Cmd.none)
   Focused id                -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
 
-gotConfig : Model -> HttpResult (List Host) -> Model
-gotConfig model res = case res of
+gotHosts : Model -> HttpResult (List Host) -> Model
+gotHosts model res = case res of
   Ok  hosts -> let addLogs  = flip appendLogs <| "Servers to lock:" :: (List.map fromHost hosts)
-                   doConfig = flip updateConfig <| \oldConfig -> { oldConfig | hosts = hosts }
-               in addLogs << doConfig <| { model | state = Ready }
+                   setHosts = flip updateConfig <| \oldConfig -> { oldConfig | hosts = hosts }
+               in addLogs << setHosts <| { model | state = Ready }
   Err err   -> appendLog model << printError <| err
 
 gotConfirm : String -> Model -> (Model, Cmd Msg)
@@ -151,51 +149,56 @@ doLock cfg = Cmd.batch << List.map (lockServer cfg.mock) <| cfg.hosts
 
 gotLockDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
 gotLockDone model host res =
-  let newCmd _ _ = verifyServer model.config.mock host
-      retryCmd   = lockServer   model.config.mock host
+  let mkNewCmd _ _ = verifyServer model.config.mock host
+      retryCmd     = lockServer   model.config.mock host
       increaseLockingCount progress = { progress | lockingProgress = progress.lockingProgress + 1 }
-  in gotLockingProgress model host res "Lock" retryCmd increaseLockingCount newCmd
+  in gotLockingProgress model host res retryCmd "Lock" increaseLockingCount mkNewCmd
 
 gotVerifyDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
 gotVerifyDone model host res =
-  let newCmd _ = verifyDoneCmd
-      retryCmd = verifyServer model.config.mock host
+  let mkNewCmd _ = verifyDoneCmd
+      retryCmd   = verifyServer model.config.mock host
       increaseVerifyingCount progress = { progress | verifyingProgress = progress.verifyingProgress + 1 }
-  in gotLockingProgress model host res "Verify" retryCmd increaseVerifyingCount newCmd
+  in gotLockingProgress model host res retryCmd "Verify" increaseVerifyingCount mkNewCmd
 
 gotLockingProgress : Model ->
                      Host ->
                      HttpResult String ->
-                     String ->
                      Cmd Msg ->
+                     String ->
                      (Progress -> Progress) ->
                      (Model -> Progress -> Cmd Msg) ->
                      (Model, Cmd Msg)
-gotLockingProgress model host result logHeader retryCmd incrProgress newCmd =
-  let doRetry = retry host retryCmd
+gotLockingProgress model host result retryCmd logHeader incrProgress mkNewCmd =
+  let doLog = formatProgressMsg host logHeader
+      doRetry = retry host retryCmd
+      ifOK progress = newProgressModel model progress doLog incrProgress mkNewCmd
+      ifNOK = (appendLog model <| doLog "unsuccessful", doRetry)
   in case result of
     Ok  host_status -> if host_status == "OK"
-                       then assumeLocking model (\progress ->
-                         let (newModel, newProgress) = newProgressModel model progress host logHeader incrProgress
-                         in (newModel, newCmd newModel newProgress)
-                       )
-                       else (appendLog model <| formatProgressMsg host logHeader "unsuccessful", doRetry)
-    Err err         -> progressError model host logHeader doRetry err
+                       then assumeLocking model ifOK
+                       else ifNOK
+    Err err         -> progressError model doRetry err doLog
 
 assumeLocking : Model -> (Progress -> (Model, Cmd Msg)) -> (Model, Cmd Msg)
-assumeLocking model fun = case model.state of
-  Locking progress -> fun progress
+assumeLocking model mkNewModel = case model.state of
+  Locking progress -> mkNewModel progress
   _                -> (appendLog model "Model in unexpected state, ignoring...", Cmd.none)
 
-newProgressModel : Model -> Progress -> Host -> String -> (Progress -> Progress) -> (Model, Progress)
-newProgressModel model progress host logHeader incr =
+newProgressModel : Model ->
+                   Progress ->
+                   (String -> String) ->
+                   (Progress -> Progress) ->
+                   (Model -> Progress -> Cmd Msg) ->
+                   (Model, Cmd Msg)
+newProgressModel model progress doLog incr mkNewCmd =
   let newProgress = incr progress
       newModel    = { model | state = Locking newProgress }
-  in (appendLog newModel <| formatProgressMsg host logHeader "success", newProgress)
+  in (appendLog newModel <| doLog "success", mkNewCmd newModel newProgress)
 
-progressError : Model -> Host -> String -> Cmd Msg -> Http.Error -> (Model, Cmd Msg)
-progressError model host logHeader retryCmd err =
-  (appendLog model << formatProgressMsg host logHeader << printError <| err, retryCmd)
+progressError : Model -> Cmd Msg -> Http.Error -> (String -> String) -> (Model, Cmd Msg)
+progressError model retryCmd err doLog =
+  (appendLog model << doLog << printError <| err, retryCmd)
 
 formatProgressMsg : Host -> String -> String -> String
 formatProgressMsg host logHeader msg = logHeader ++ ": " ++ (fromHost host) ++ ": " ++ msg
@@ -315,8 +318,8 @@ viewProgress model progress maybeUrl =
             ]
 
 printProgress : Progress -> (Progress -> Int) -> (Progress -> Int) -> String
-printProgress progress count total =
-  (String.fromInt << count <| progress) ++ "/" ++ (String.fromInt << total <| progress)
+printProgress progress getCount getTotal =
+  (String.fromInt << getCount <| progress) ++ "/" ++ (String.fromInt << getTotal <| progress)
 
 renderImg : Url -> Element Msg
 renderImg (Url url) = column [ Element.width fill

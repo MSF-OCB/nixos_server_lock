@@ -6251,77 +6251,6 @@ var $author$project$Main$fromHost = function (_v0) {
 	var host = _v0;
 	return host;
 };
-var $author$project$Main$Ready = {$: 1};
-var $author$project$Main$appendLogs = $elm$core$List$foldl(
-	F2(
-		function (s, m) {
-			return A2($author$project$Main$appendLog, m, s);
-		}));
-var $author$project$Main$flip = F3(
-	function (f, b, a) {
-		return A2(f, a, b);
-	});
-var $author$project$Main$printError = function (error) {
-	switch (error.$) {
-		case 0:
-			var s = error.a;
-			return 'BadUrl: ' + s;
-		case 1:
-			return 'Timeout';
-		case 2:
-			return 'NetworkError';
-		case 3:
-			var i = error.a;
-			return 'BadStatus: ' + $elm$core$String$fromInt(i);
-		default:
-			var s = error.a;
-			return 'BadBody: ' + s;
-	}
-};
-var $author$project$Main$updateConfig = F2(
-	function (model, updateC) {
-		var oldConfig = model.n;
-		return _Utils_update(
-			model,
-			{
-				n: updateC(oldConfig)
-			});
-	});
-var $author$project$Main$gotConfig = F2(
-	function (model, res) {
-		if (!res.$) {
-			var hosts = res.a;
-			var doConfig = A2(
-				$author$project$Main$flip,
-				$author$project$Main$updateConfig,
-				function (oldConfig) {
-					return _Utils_update(
-						oldConfig,
-						{ad: hosts});
-				});
-			var addLogs = A2(
-				$author$project$Main$flip,
-				$author$project$Main$appendLogs,
-				A2(
-					$elm$core$List$cons,
-					'Servers to lock:',
-					A2($elm$core$List$map, $author$project$Main$fromHost, hosts)));
-			return A3(
-				$elm$core$Basics$composeL,
-				addLogs,
-				doConfig,
-				_Utils_update(
-					model,
-					{p: $author$project$Main$Ready}));
-		} else {
-			var err = res.a;
-			return A3(
-				$elm$core$Basics$composeL,
-				$author$project$Main$appendLog(model),
-				$author$project$Main$printError,
-				err);
-		}
-	});
 var $author$project$Main$Locking = function (a) {
 	return {$: 3, a: a};
 };
@@ -6381,6 +6310,10 @@ var $author$project$Main$doLock = function (cfg) {
 			$author$project$Main$lockServer(cfg.y)),
 		cfg.ad);
 };
+var $author$project$Main$flip = F3(
+	function (f, b, a) {
+		return A2(f, a, b);
+	});
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $author$project$Main$gotConfirm = F2(
 	function (confirmTxt, model) {
@@ -6412,17 +6345,34 @@ var $author$project$Main$Done = F2(
 		return {$: 4, a: a, b: b};
 	});
 var $author$project$Main$assumeLocking = F2(
-	function (model, fun) {
+	function (model, mkNewModel) {
 		var _v0 = model.p;
 		if (_v0.$ === 3) {
 			var progress = _v0.a;
-			return fun(progress);
+			return mkNewModel(progress);
 		} else {
 			return _Utils_Tuple2(
 				A2($author$project$Main$appendLog, model, 'Model in unexpected state, ignoring...'),
 				$elm$core$Platform$Cmd$none);
 		}
 	});
+var $author$project$Main$printError = function (error) {
+	switch (error.$) {
+		case 0:
+			var s = error.a;
+			return 'BadUrl: ' + s;
+		case 1:
+			return 'Timeout';
+		case 2:
+			return 'NetworkError';
+		case 3:
+			var i = error.a;
+			return 'BadStatus: ' + $elm$core$String$fromInt(i);
+		default:
+			var s = error.a;
+			return 'BadBody: ' + s;
+	}
+};
 var $author$project$Main$gotGif = F2(
 	function (model, res) {
 		return A2(
@@ -6459,12 +6409,61 @@ var $author$project$Main$gotGif = F2(
 					$elm$core$Platform$Cmd$none);
 			});
 	});
+var $author$project$Main$Ready = {$: 1};
+var $author$project$Main$appendLogs = $elm$core$List$foldl(
+	F2(
+		function (s, m) {
+			return A2($author$project$Main$appendLog, m, s);
+		}));
+var $author$project$Main$updateConfig = F2(
+	function (model, doUpdate) {
+		return _Utils_update(
+			model,
+			{
+				n: doUpdate(model.n)
+			});
+	});
+var $author$project$Main$gotHosts = F2(
+	function (model, res) {
+		if (!res.$) {
+			var hosts = res.a;
+			var setHosts = A2(
+				$author$project$Main$flip,
+				$author$project$Main$updateConfig,
+				function (oldConfig) {
+					return _Utils_update(
+						oldConfig,
+						{ad: hosts});
+				});
+			var addLogs = A2(
+				$author$project$Main$flip,
+				$author$project$Main$appendLogs,
+				A2(
+					$elm$core$List$cons,
+					'Servers to lock:',
+					A2($elm$core$List$map, $author$project$Main$fromHost, hosts)));
+			return A3(
+				$elm$core$Basics$composeL,
+				addLogs,
+				setHosts,
+				_Utils_update(
+					model,
+					{p: $author$project$Main$Ready}));
+		} else {
+			var err = res.a;
+			return A3(
+				$elm$core$Basics$composeL,
+				$author$project$Main$appendLog(model),
+				$author$project$Main$printError,
+				err);
+		}
+	});
 var $author$project$Main$formatProgressMsg = F3(
 	function (host, logHeader, msg) {
 		return logHeader + (': ' + ($author$project$Main$fromHost(host) + (': ' + msg)));
 	});
 var $author$project$Main$newProgressModel = F5(
-	function (model, progress, host, logHeader, incr) {
+	function (model, progress, doLog, incr, mkNewCmd) {
 		var newProgress = incr(progress);
 		var newModel = _Utils_update(
 			model,
@@ -6475,18 +6474,18 @@ var $author$project$Main$newProgressModel = F5(
 			A2(
 				$author$project$Main$appendLog,
 				newModel,
-				A3($author$project$Main$formatProgressMsg, host, logHeader, 'success')),
-			newProgress);
+				doLog('success')),
+			A2(mkNewCmd, newModel, newProgress));
 	});
-var $author$project$Main$progressError = F5(
-	function (model, host, logHeader, retryCmd, err) {
+var $author$project$Main$progressError = F4(
+	function (model, retryCmd, err, doLog) {
 		return _Utils_Tuple2(
 			A3(
 				$elm$core$Basics$composeL,
 				A2(
 					$elm$core$Basics$composeL,
 					$author$project$Main$appendLog(model),
-					A2($author$project$Main$formatProgressMsg, host, logHeader)),
+					doLog),
 				$author$project$Main$printError,
 				err),
 			retryCmd);
@@ -6509,29 +6508,24 @@ var $author$project$Main$retry = F2(
 			$author$project$Main$retryDelaySec * 1000);
 	});
 var $author$project$Main$gotLockingProgress = F7(
-	function (model, host, result, logHeader, retryCmd, incrProgress, newCmd) {
+	function (model, host, result, retryCmd, logHeader, incrProgress, mkNewCmd) {
 		var doRetry = A2($author$project$Main$retry, host, retryCmd);
+		var doLog = A2($author$project$Main$formatProgressMsg, host, logHeader);
+		var ifNOK = _Utils_Tuple2(
+			A2(
+				$author$project$Main$appendLog,
+				model,
+				doLog('unsuccessful')),
+			doRetry);
+		var ifOK = function (progress) {
+			return A5($author$project$Main$newProgressModel, model, progress, doLog, incrProgress, mkNewCmd);
+		};
 		if (!result.$) {
 			var host_status = result.a;
-			return (host_status === 'OK') ? A2(
-				$author$project$Main$assumeLocking,
-				model,
-				function (progress) {
-					var _v1 = A5($author$project$Main$newProgressModel, model, progress, host, logHeader, incrProgress);
-					var newModel = _v1.a;
-					var newProgress = _v1.b;
-					return _Utils_Tuple2(
-						newModel,
-						A2(newCmd, newModel, newProgress));
-				}) : _Utils_Tuple2(
-				A2(
-					$author$project$Main$appendLog,
-					model,
-					A3($author$project$Main$formatProgressMsg, host, logHeader, 'unsuccessful')),
-				doRetry);
+			return (host_status === 'OK') ? A2($author$project$Main$assumeLocking, model, ifOK) : ifNOK;
 		} else {
 			var err = result.a;
-			return A5($author$project$Main$progressError, model, host, logHeader, doRetry, err);
+			return A4($author$project$Main$progressError, model, doRetry, err, doLog);
 		}
 	});
 var $author$project$Main$VerifyDoneMsg = F2(
@@ -6563,7 +6557,7 @@ var $author$project$Main$verifyServer = F2(
 var $author$project$Main$gotLockDone = F3(
 	function (model, host, res) {
 		var retryCmd = A2($author$project$Main$lockServer, model.n.y, host);
-		var newCmd = F2(
+		var mkNewCmd = F2(
 			function (_v0, _v1) {
 				return A2($author$project$Main$verifyServer, model.n.y, host);
 			});
@@ -6572,7 +6566,7 @@ var $author$project$Main$gotLockDone = F3(
 				progress,
 				{af: progress.af + 1});
 		};
-		return A7($author$project$Main$gotLockingProgress, model, host, res, 'Lock', retryCmd, increaseLockingCount, newCmd);
+		return A7($author$project$Main$gotLockingProgress, model, host, res, retryCmd, 'Lock', increaseLockingCount, mkNewCmd);
 	});
 var $author$project$Main$FoundGifMsg = function (a) {
 	return {$: 5, a: a};
@@ -6597,7 +6591,7 @@ var $author$project$Main$verifyDoneCmd = function (progress) {
 var $author$project$Main$gotVerifyDone = F3(
 	function (model, host, res) {
 		var retryCmd = A2($author$project$Main$verifyServer, model.n.y, host);
-		var newCmd = function (_v0) {
+		var mkNewCmd = function (_v0) {
 			return $author$project$Main$verifyDoneCmd;
 		};
 		var increaseVerifyingCount = function (progress) {
@@ -6605,7 +6599,7 @@ var $author$project$Main$gotVerifyDone = F3(
 				progress,
 				{Z: progress.Z + 1});
 		};
-		return A7($author$project$Main$gotLockingProgress, model, host, res, 'Verify', retryCmd, increaseVerifyingCount, newCmd);
+		return A7($author$project$Main$gotLockingProgress, model, host, res, retryCmd, 'Verify', increaseVerifyingCount, mkNewCmd);
 	});
 var $author$project$Main$Focused = function (a) {
 	return {$: 8, a: a};
@@ -6643,7 +6637,7 @@ var $author$project$Main$update = F2(
 			case 0:
 				var hosts = msg.a;
 				return _Utils_Tuple2(
-					A2($author$project$Main$gotConfig, model, hosts),
+					A2($author$project$Main$gotHosts, model, hosts),
 					$elm$core$Platform$Cmd$none);
 			case 1:
 				return _Utils_Tuple2(
@@ -6665,14 +6659,10 @@ var $author$project$Main$update = F2(
 				var host = msg.a;
 				var cmd = msg.b;
 				return _Utils_Tuple2(
-					A3(
-						$elm$core$Basics$composeL,
-						A2(
-							$elm$core$Basics$composeL,
-							$author$project$Main$appendLog(model),
-							$elm$core$Basics$append('Retrying: ')),
-						$author$project$Main$fromHost,
-						host),
+					A2(
+						$author$project$Main$appendLog,
+						model,
+						'Retrying: ' + $author$project$Main$fromHost(host)),
 					cmd);
 			case 5:
 				var result = msg.a;
@@ -13887,8 +13877,8 @@ var $author$project$Main$viewConfirm = F2(
 var $mdgriffith$elm_ui$Internal$Flag$fontWeight = $mdgriffith$elm_ui$Internal$Flag$flag(13);
 var $mdgriffith$elm_ui$Element$Font$bold = A2($mdgriffith$elm_ui$Internal$Model$Class, $mdgriffith$elm_ui$Internal$Flag$fontWeight, $mdgriffith$elm_ui$Internal$Style$classes.b5);
 var $author$project$Main$printProgress = F3(
-	function (progress, count, total) {
-		return A3($elm$core$Basics$composeL, $elm$core$String$fromInt, count, progress) + ('/' + A3($elm$core$Basics$composeL, $elm$core$String$fromInt, total, progress));
+	function (progress, getCount, getTotal) {
+		return A3($elm$core$Basics$composeL, $elm$core$String$fromInt, getCount, progress) + ('/' + A3($elm$core$Basics$composeL, $elm$core$String$fromInt, getTotal, progress));
 	});
 var $elm$html$Html$Attributes$alt = $elm$html$Html$Attributes$stringProperty('alt');
 var $elm$html$Html$Attributes$src = function (url) {
