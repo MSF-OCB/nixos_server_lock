@@ -240,7 +240,7 @@ view model = Element.layout [ Background.color backgroundColor
                             , Element.width fill
                             , Element.height fill
                             , Element.padding 15
-                            ] (viewElement model)
+                            ] <| viewElement model
 
 viewElement : Model -> Element Msg
 viewElement model =
@@ -248,14 +248,13 @@ viewElement model =
      , Element.height fill
      , Element.scrollbars
      , printLog model
-     ]
-     ( case model.state of
-         Init              -> el [ Font.size 30 ] <| text "Loading the app config..."
-         Ready             -> viewReady model
-         AwaitConfirm txt  -> viewConfirm model txt
-         Locking progress  -> viewProgress model progress Maybe.Nothing
-         Done progress url -> viewProgress model progress url
-     )
+     ] <|
+     case model.state of
+       Init              -> el [ Font.size 30 ] <| text "Loading the app config..."
+       Ready             -> viewReady model
+       AwaitConfirm txt  -> viewConfirm model txt
+       Locking progress  -> viewProgress model progress Maybe.Nothing
+       Done progress url -> viewProgress model progress url
 
 viewReady : Model -> Element Msg
 viewReady model =
@@ -307,7 +306,7 @@ viewProgress : Model -> Progress -> Maybe Url -> Element Msg
 viewProgress model progress maybeUrl =
   let mockParagraph = if model.config.mock
                       then paragraph [] [ text "(Beware: you selected "
-                                        , el [ Font.bold ] (text "test mode")
+                                        , el [ Font.bold ] <| text "test mode"
                                         , text ", no servers have actually been disabled!)" ]
                       else Element.none
   in column [ Element.width fill
