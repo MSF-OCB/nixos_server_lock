@@ -22,11 +22,12 @@ import Element.Input      as Input
 flip : (a -> b -> c) -> b -> a -> c
 flip f b a = f a b
 
-main = Browser.element { init = init
-                       , update = update
-                       , subscriptions = subscriptions
-                       , view = view
-                       }
+main : Program () Model Msg
+main = Browser.document { init = init
+                        , update = update
+                        , subscriptions = subscriptions
+                        , view = \model -> { title = "Panic Button", body = [view model] }
+                        }
 
 retryDelaySec : Float
 retryDelaySec = 15
