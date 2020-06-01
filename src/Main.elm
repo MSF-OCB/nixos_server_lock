@@ -56,6 +56,7 @@ fontColor = rgb255 200 220 220
 
 type Url  = Url  String
 type Host = Host String
+type alias Path = List String
 
 fromUrl : Url -> String
 fromUrl (Url url) = url
@@ -387,7 +388,7 @@ doVerifyServer : Host -> Bool -> Time.Posix -> Cmd Msg
 doVerifyServer host mock time = doLockGet host mock time ["verify"] (VerifyDoneMsg host)
 
 -- TODO: only for the testing API from the demo. Replace with doLockPost
-doLockGet : Host -> Bool -> Time.Posix -> List String -> (HttpResult String -> Msg) -> Cmd Msg
+doLockGet : Host -> Bool -> Time.Posix -> Path -> (HttpResult String -> Msg) -> Cmd Msg
 doLockGet host mock time path mkMsg =
   let queryString = [ UB.string "host" <| fromHost host
                     , paramFromBool "mock" mock
@@ -398,7 +399,7 @@ doLockGet host mock time path mkMsg =
               , expect = Http.expectJson mkMsg statusDecoder
               }
 
-doLockPost : Host -> Bool -> Time.Posix -> List String -> (HttpResult String -> Msg) -> Cmd Msg
+doLockPost : Host -> Bool -> Time.Posix -> Path -> (HttpResult String -> Msg) -> Cmd Msg
 doLockPost host mock time path mkMsg =
   let url = UB.crossOrigin ("https://" ++ (fromHost host))
                            ("api" :: path)
