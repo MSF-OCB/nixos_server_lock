@@ -307,9 +307,9 @@ viewConfirm model txt =
 viewProgress : Model -> Progress -> Maybe Url -> Element Msg
 viewProgress model progress maybeUrl =
   let mockParagraph = if model.config.mock
-                      then paragraph [] [ text "(Beware: you selected "
+                      then paragraph [] [ text "Beware: you selected "
                                         , el [ Font.bold ] <| text "test mode"
-                                        , text ", no servers have actually been disabled!)" ]
+                                        , text ", no servers will actually be disabled!" ]
                       else Element.none
   in column [ Element.width fill
             , Element.height fill
@@ -317,12 +317,12 @@ viewProgress model progress maybeUrl =
             ]
             [ column [ Element.centerX
                      , Element.centerY
-                     , Element.spacing 10
+                     , Element.spacing 15
                      ]
-                     [ column [] [ paragraph [] [ text <| "Locking "   ++ (String.fromInt progress.total) ++ " servers." ]
+                     [ mockParagraph
+                     , column [] [ paragraph [] [ text <| "Locking "   ++ (String.fromInt progress.total) ++ " servers." ]
                                  , paragraph [] [ text <| "Locked: "   ++ (printProgress progress .lockingProgress .total) ]
                                  , paragraph [] [ text <| "Verified: " ++ (printProgress progress .verifyingProgress .total) ]
-                                 , mockParagraph
                                  ]
                      , Maybe.withDefault Element.none << Maybe.map renderImg <| maybeUrl
                      ]
