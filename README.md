@@ -7,7 +7,7 @@ and to test the result, run a python server serving the resulting `result` direc
   python -m http.server 8000 --directory result/
 ```
 
-The production build, which also minifies the resulting JS, is done with by running just
+The production build, which also minifies the resulting JS, is done by running just
 ```
   nix-build
 ```
