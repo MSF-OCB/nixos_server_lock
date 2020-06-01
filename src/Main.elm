@@ -240,6 +240,7 @@ view model = Element.layout [ Background.color backgroundColor
                             , Font.color fontColor
                             , Element.width fill
                             , Element.height fill
+                            , Element.scrollbars
                             , Element.padding 15
                             ] <| viewElement model
 
@@ -247,7 +248,6 @@ viewElement : Model -> Element Msg
 viewElement model =
   el [ Element.width fill
      , Element.height fill
-     , Element.scrollbars
      , printLog model
      ] <|
      case model.state of
