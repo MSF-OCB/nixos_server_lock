@@ -1,4 +1,4 @@
-{ nixpkgs ? import <nixpkgs> {} }:
+{ nixpkgs ? import <nixpkgs> {}, production ? true }:
 
 with nixpkgs;
 with lib;
@@ -48,11 +48,11 @@ let
       '';
     };
 in mkDerivation {
-  name = "dynamic-frontend-0.1.0";
+  name = "panic_button-0.1.0";
   srcs = ./elm-srcs.nix;
   src = ./.;
   targets = ["Main"];
   srcdir = "./src";
-  production = true;
+  inherit production;
 }
 
