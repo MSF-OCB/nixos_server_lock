@@ -18,6 +18,7 @@ import Element.Border     as Border
 import Element.Events     as Events
 import Element.Font       as Font
 import Element.Input      as Input
+import Element.Lazy       as Lazy
 
 flip : (a -> b -> c) -> b -> a -> c
 flip f b a = f a b
@@ -340,14 +341,17 @@ renderImg (Url url) = column [ Element.width fill
                              ]
 
 printLog : Model -> Element.Attribute Msg
-printLog model =
+printLog model = Element.behindContent << Lazy.lazy doPrintLog <| model.log
+
+doPrintLog : List String -> Element Msg
+doPrintLog msgs =
   let formatLine msg = paragraph [] [ text msg ]
-      logLines = formatLine "Debug log:" :: List.map formatLine model.log
-  in Element.behindContent <| el [ Element.height fill
-                                 , Element.width fill
-                                 , Font.size 10
-                                 ]
-                           <| column [Element.alignBottom] logLines
+      logLines = List.map formatLine <| "Debug log:" :: msgs
+  in el [ Element.height fill
+        , Element.width fill
+        , Font.size 10
+        ]
+        <| column [Element.alignBottom] logLines
 
 button : String -> String -> Msg -> Element Msg
 button label src onPress =
