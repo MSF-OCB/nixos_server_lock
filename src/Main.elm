@@ -45,14 +45,17 @@ confirmationTriggered input = input == confirmationTriggerText
 hostStatusOK : String -> Bool
 hostStatusOK status = status == "OK"
 
-buttonUrl : String
-buttonUrl = UB.relative ["assets", "red-button.png"] []
-
 backgroundColor : Element.Color
 backgroundColor = rgb255 100 50 50
 
+buttonBackgroundColor : Element.Color
+buttonBackgroundColor = rgb255 120 70 70
+
 fontColor : Element.Color
 fontColor = rgb255 200 220 220
+
+black : Element.Color
+black = rgb255 0 0 0
 
 type Url  = Url  String
 type Host = Host String
@@ -65,7 +68,6 @@ fromHost : Host -> String
 fromHost (Host host) = host
 
 type ModelState = Init
-                | Ready
                 | AwaitConfirm String
                 | Locking Progress
                 | Done Progress (Maybe Url)
@@ -89,7 +91,7 @@ type alias ProgressState = Int
 type alias HttpResult res = Result Http.Error res
 
 type Msg = HostConfigMsg (HttpResult (List Host))
-         | LockMsg
+         | ConfirmMsg
          | LockDoneMsg Host (HttpResult String)
          | VerifyDoneMsg Host (HttpResult String)
          | RetryMsg Host (Cmd Msg)
@@ -127,14 +129,14 @@ initModel = { state  = Init
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case msg of
-  HostConfigMsg hosts          -> (gotHosts model hosts, Cmd.none)
-  LockMsg                      -> ({ model | state = AwaitConfirm "" }, tryFocus confirmationInputId)
+  HostConfigMsg hosts          -> (gotHosts model hosts, tryFocus confirmationInputId)
+  ConfirmMsg                   -> gotConfirm model
   LockDoneMsg host result      -> gotLockDone model host result
   VerifyDoneMsg host result    -> gotVerifyDone model host result
   RetryMsg host cmd            -> (appendLog model <| "Retrying: " ++ (fromHost host), cmd)
   TagRequestMsg mkRequest time -> (model, mkRequest time)
   FoundGifMsg result           -> gotGif model result
-  UpdateConfirmTextMsg txt     -> gotConfirm txt model
+  UpdateConfirmTextMsg txt     -> ({ model | state = AwaitConfirm txt }, Cmd.none)
   UpdateMockCheckboxMsg mock   -> (updateConfig model <| \oldConfig -> { oldConfig | mock = mock }, Cmd.none)
   FocusedMsg id                -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
 
@@ -142,20 +144,18 @@ gotHosts : Model -> HttpResult (List Host) -> Model
 gotHosts model res = case res of
   Ok  hosts -> let addLogs  = flip appendLogs <| "Servers to lock:" :: (List.map fromHost hosts)
                    setHosts = flip updateConfig <| \oldConfig -> { oldConfig | hosts = hosts }
-               in addLogs << setHosts <| { model | state = Ready }
+               in addLogs << setHosts <| { model | state = AwaitConfirm "" }
   Err err   -> appendLog model << printError <| err
 
-gotConfirm : String -> Model -> (Model, Cmd Msg)
-gotConfirm confirmTxt model =
+gotConfirm : Model -> (Model, Cmd Msg)
+gotConfirm model =
   let setLocking m = { m | state = Locking { total = List.length m.config.hosts
                                            , lockingProgress   = 0
                                            , verifyingProgress = 0
                                            }
                      }
       addLog = flip appendLog "Locking the servers..."
-  in if confirmationTriggered confirmTxt
-     then (addLog << setLocking <| model, doLock model.config)
-     else ({ model | state = AwaitConfirm confirmTxt }, Cmd.none)
+  in (addLog << setLocking <| model, doLock model.config)
 
 doLock : Config -> Cmd Msg
 doLock cfg = Cmd.batch << List.map (flip lockServer cfg.mock) <| cfg.hosts
@@ -254,54 +254,65 @@ viewElement model =
      ] <|
      case model.state of
        Init              -> el [ Font.size 30 ] <| text "Loading the app config..."
-       Ready             -> viewReady model
        AwaitConfirm txt  -> viewConfirm model txt
        Locking progress  -> viewProgress model progress Maybe.Nothing
        Done progress url -> viewProgress model progress url
 
-viewReady : Model -> Element Msg
-viewReady model =
-  column [ Element.width fill
-         , Element.height fill
-         ]
-         [ el [ Element.centerX ] <| paragraph [ Font.size 50 ] [ text "Secure the servers in your project" ]
-         , el [ Element.centerX
-              , Element.centerY
-              ]
-              <| button "Lock the servers" buttonUrl LockMsg
-         ]
-
 viewConfirm : Model -> String -> Element Msg
 viewConfirm model txt =
-  let title = "Confirmation required"
+  let title = "Securely lock the servers in your project"
       txtLabel = "Please type " ++ confirmationTriggerText ++ " below to confirm"
-      mockLabel = "Do a test run without actually locking the servers, only uncheck this in a real emergency."
+      mockLabel = [ "Do a test run without actually locking the servers.", "Only uncheck this in a real emergency." ]
+      mockCheckbox = Input.checkbox [ Element.spacing 15 ]
+                                    { onChange = UpdateMockCheckboxMsg
+                                    , icon = Input.defaultCheckbox
+                                    , checked = model.config.mock
+                                    , label = Input.labelRight [ Element.width fill ]
+                                                << Element.column []
+                                                << List.map (paragraph [] << List.singleton << text)
+                                                <| mockLabel
+                                    }
       textInput = Input.text [ Font.color (rgb255 0 0 0)
                              , Element.htmlAttribute << HA.id <| confirmationInputId
                              , Element.spacing 15
                              ]
                              { onChange = UpdateConfirmTextMsg
                              , text = txt
-                             , placeholder = Maybe.Nothing
-                             , label = Input.labelAbove [] (paragraph [] [ text txtLabel ])
+                             , placeholder = Just << Input.placeholder [] << paragraph [] <| [ text confirmationTriggerText ]
+                             , label = Input.labelAbove [] <| paragraph [] [ text txtLabel ]
                              }
-      mockCheckbox = Input.checkbox [ Element.spacing 15 ]
-                                    { onChange = UpdateMockCheckboxMsg
-                                    , icon = Input.defaultCheckbox
-                                    , checked = model.config.mock
-                                    , label = Input.labelRight [ Element.width fill ] <| paragraph [] [ text mockLabel ]
-                                    }
+      goButton = Input.button [ Border.width 2
+                              , Border.solid
+                              , Border.rounded 3
+                              , Font.color fontColor
+                              , Border.color black
+                              , Background.color buttonBackgroundColor
+                              ]
+                              { onPress = Just ConfirmMsg
+                              , label = paragraph [ Element.padding 5 ] [ text "Go!" ]
+                              }
+      buttonContainer = el [ Element.below <| if confirmationTriggered txt then goButton else Element.none ] Element.none
   in column [ Element.width fill
             , Element.height fill
             ]
-            [ el [ Element.centerX ] <| paragraph [ Font.size 50 ] [ text title ]
+            [ el [ Element.centerX ] << paragraph [ Font.size 50 ] <| [ text title ]
             , column [ Element.centerX
                      , Element.centerY
                      , Element.spacing 15
                      , Font.size 20
                      ]
-                     [ mockCheckbox
-                     , textInput
+                     [ paragraph [] [ text "<warning about the consequences>" ]
+                     , column [ Border.width 2
+                              , Border.solid
+                              , Border.rounded 3
+                              , Border.color black
+                              , Element.padding 20
+                              , Element.spacing 15
+                              ]
+                              [ mockCheckbox
+                              , textInput
+                              , buttonContainer
+                              ]
                      ]
             ]
 
@@ -353,14 +364,6 @@ doPrintLog msgs =
         , Font.size 10
         ]
         <| column [Element.alignBottom] logLines
-
-button : String -> String -> Msg -> Element Msg
-button label src onPress =
-  image [ Events.onClick onPress
-        , Font.color       (rgb255 255 255 255)
-        , Element.focused [ Background.color (rgb255 200 100 100) ]
-        ]
-        { src = src, description = label }
 
 getHostConfig : Cmd Msg
 getHostConfig = Http.get { url = UB.relative ["static", "api", "config"] []
