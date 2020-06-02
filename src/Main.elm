@@ -20,6 +20,15 @@ import Element.Font       as Font
 import Element.Input      as Input
 import Element.Lazy       as Lazy
 
+--
+-- TODO items
+--
+-- 1. Implement a maximum for the number of retries.
+--      -> this might require maintaining a dict in the model containing info per host
+-- 2. Message to inform the user that everything is done
+-- 3. Detailed error messages, this may require a dict like mentioned in item 1
+--
+
 flip : (a -> b -> c) -> b -> a -> c
 flip f b a = f a b
 
@@ -45,17 +54,29 @@ confirmationTriggered input = input == confirmationTriggerText
 hostStatusOK : String -> Bool
 hostStatusOK status = status == "OK"
 
-backgroundColor : Element.Color
-backgroundColor = rgb255 100 50 50
-
-buttonBackgroundColor : Element.Color
-buttonBackgroundColor = rgb255 120 70 70
-
-fontColor : Element.Color
-fontColor = rgb255 200 220 220
-
 black : Element.Color
 black = rgb255 0 0 0
+
+grey : Element.Color
+grey = rgb255 234 237 243
+
+white : Element.Color
+white = rgb255 255 255 255
+
+red : Element.Color
+red = rgb255 238 0 0
+
+backgroundColor : Element.Color
+backgroundColor = white
+
+buttonBackgroundColor : Element.Color
+buttonBackgroundColor = white
+
+fontColor : Element.Color
+fontColor = black
+
+azgLogo : Path
+azgLogo = [ "assets", "azg-logo.svg" ]
 
 type Url  = Url  String
 type Host = Host String
@@ -70,7 +91,6 @@ fromHost (Host host) = host
 type ModelState = Init
                 | AwaitConfirm String
                 | Locking Progress
-                | Done Progress (Maybe Url)
 
 type alias Model = { state  : ModelState
                    , config : Config
@@ -96,7 +116,6 @@ type Msg = HostConfigMsg (HttpResult (List Host))
          | VerifyDoneMsg Host (HttpResult String)
          | RetryMsg Host (Cmd Msg)
          | TagRequestMsg (Time.Posix -> Cmd Msg) Time.Posix
-         | FoundGifMsg (HttpResult Url)
          | UpdateConfirmTextMsg String
          | UpdateMockCheckboxMsg Bool
          | FocusedMsg String
@@ -135,7 +154,6 @@ update msg model = case msg of
   VerifyDoneMsg host result    -> gotVerifyDone model host result
   RetryMsg host cmd            -> (appendLog model <| "Retrying: " ++ (fromHost host), cmd)
   TagRequestMsg mkRequest time -> (model, mkRequest time)
-  FoundGifMsg result           -> gotGif model result
   UpdateConfirmTextMsg txt     -> ({ model | state = AwaitConfirm txt }, Cmd.none)
   UpdateMockCheckboxMsg mock   -> (updateConfig model <| \oldConfig -> { oldConfig | mock = mock }, Cmd.none)
   FocusedMsg id                -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
@@ -162,17 +180,17 @@ doLock cfg = Cmd.batch << List.map (flip lockServer cfg.mock) <| cfg.hosts
 
 gotLockDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
 gotLockDone model host res =
-  let mkNewCmd _ _ = verifyServer host model.config.mock
-      retryCmd     = lockServer   host model.config.mock
+  let newCmd   = verifyServer host model.config.mock
+      retryCmd = lockServer   host model.config.mock
       increaseLockingCount progress = { progress | lockingProgress = progress.lockingProgress + 1 }
-  in gotLockingProgress model host res retryCmd "Lock" increaseLockingCount mkNewCmd
+  in gotLockingProgress model host res retryCmd "Lock" increaseLockingCount newCmd
 
 gotVerifyDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
 gotVerifyDone model host res =
-  let mkNewCmd _ = verifyDoneCmd
-      retryCmd   = verifyServer host model.config.mock
+  let newCmd   = Cmd.none
+      retryCmd = verifyServer host model.config.mock
       increaseVerifyingCount progress = { progress | verifyingProgress = progress.verifyingProgress + 1 }
-  in gotLockingProgress model host res retryCmd "Verify" increaseVerifyingCount mkNewCmd
+  in gotLockingProgress model host res retryCmd "Verify" increaseVerifyingCount newCmd
 
 gotLockingProgress : Model ->
                      Host ->
@@ -180,12 +198,12 @@ gotLockingProgress : Model ->
                      Cmd Msg ->
                      String ->
                      (Progress -> Progress) ->
-                     (Model -> Progress -> Cmd Msg) ->
+                     Cmd Msg ->
                      (Model, Cmd Msg)
-gotLockingProgress model host result retryCmd logHeader incrProgress mkNewCmd =
+gotLockingProgress model host result retryCmd logHeader incrProgress newCmd =
   let doLog = formatProgressMsg host logHeader
       doRetry = retry host retryCmd
-      ifOK progress = newProgressModel model progress doLog incrProgress mkNewCmd
+      ifOK progress = newProgressModel model progress doLog incrProgress newCmd
       ifNOK = (appendLog model <| doLog "unsuccessful", doRetry)
   in case result of
     Ok  hostStatus -> if hostStatusOK hostStatus
@@ -202,12 +220,11 @@ newProgressModel : Model ->
                    Progress ->
                    (String -> String) ->
                    (Progress -> Progress) ->
-                   (Model -> Progress -> Cmd Msg) ->
+                   Cmd Msg ->
                    (Model, Cmd Msg)
-newProgressModel model progress doLog incr mkNewCmd =
-  let newProgress = incr progress
-      newModel    = { model | state = Locking newProgress }
-  in (appendLog newModel <| doLog "success", mkNewCmd newModel newProgress)
+newProgressModel model progress doLog incr newCmd =
+  let newModel = { model | state = Locking <| incr progress }
+  in (appendLog newModel <| doLog "success", newCmd)
 
 progressError : Model -> Cmd Msg -> Http.Error -> (String -> String) -> (Model, Cmd Msg)
 progressError model retryCmd err doLog =
@@ -216,64 +233,81 @@ progressError model retryCmd err doLog =
 formatProgressMsg : Host -> String -> String -> String
 formatProgressMsg host logHeader msg = logHeader ++ ": " ++ (fromHost host) ++ ": " ++ msg
 
-verifyDoneCmd : Progress -> Cmd Msg
-verifyDoneCmd progress = if progress.verifyingProgress == progress.total
-                         then getRandomCatGif
-                         else Cmd.none
-
 retry : Host -> Cmd Msg -> Cmd Msg
 retry host cmd = T.perform (\_ -> RetryMsg host cmd) << P.sleep <| retryDelaySec * 1000
 
 tryFocus : String -> Cmd Msg
 tryFocus id = T.attempt (\_ -> FocusedMsg id) <| Dom.focus id
 
-gotGif : Model -> HttpResult Url -> (Model, Cmd Msg)
-gotGif model res = assumeLocking model (\progress ->
-  let newModel = case res of
-                   Ok  url ->           { model | state = Done progress (Maybe.Just url) }
-                   Err err -> appendLog { model | state = Done progress Maybe.Nothing } << printError <| err
-  in (appendLog newModel "Reached final state.", Cmd.none))
-
 subscriptions : Model -> Sub Msg
 subscriptions model = Sub.none
 
 view : Model -> Html Msg
-view model = Element.layout [ Background.color backgroundColor
-                            , Font.color fontColor
-                            , Element.width fill
-                            , Element.height fill
-                            , Element.scrollbars
-                            , Element.padding 15
-                            ] <| viewElement model
+view model =
+  let focusStyle = { borderColor = Just black
+                   , backgroundColor = Nothing
+                   , shadow = Nothing
+                   }
+      content = viewElement model
+  in Element.layoutWith { options = [ Element.focusStyle focusStyle ] }
+                        [ Background.color backgroundColor
+                        , Font.color fontColor
+                        , Element.width fill
+                        , Element.height fill
+                        , Element.scrollbars
+                        , Element.padding 15
+                        ]
+                        content
 
 viewElement : Model -> Element Msg
 viewElement model =
-  el [ Element.width fill
-     , Element.height fill
-     , printLog model
-     ] <|
-     case model.state of
-       Init              -> el [ Font.size 30 ] <| text "Loading the app config..."
-       AwaitConfirm txt  -> viewConfirm model txt
-       Locking progress  -> viewProgress model progress Maybe.Nothing
-       Done progress url -> viewProgress model progress url
+  let title = paragraph [ Font.size 50 ] [ text "MSF server "
+                                         , el [ Font.color red ] <| text "panic button"
+                                         ]
+      titleElement = el [ Element.centerX
+                        , Element.centerY
+                        ]
+                        <| title
+      mainElement = el [ Element.height <| Element.fill
+                       , Element.width fill
+                       ]
+                       <| case model.state of
+                            Init             -> el [ Font.size 30 ] <| text "Loading the app config..."
+                            AwaitConfirm txt -> viewConfirm model txt
+                            Locking progress -> viewProgress model progress
+      logo = el [ Element.alignBottom
+                , Element.width fill
+                , Element.padding 10
+                ]
+                <| el [ Element.centerX ]
+                      <| image [ Element.height << Element.minimum 50 <| Element.fill
+                               , Element.width fill
+                               , Element.alignBottom
+                               ]
+                               { src = UB.relative azgLogo []
+                               , description = "AZG logo"
+                               }
+  in Element.column [ Element.width fill
+                    , Element.height fill
+                    , printLog model
+                    ]
+                    [ titleElement
+                    , mainElement
+                    , logo
+                    ]
 
 viewConfirm : Model -> String -> Element Msg
 viewConfirm model txt =
-  let title = "Securely lock the servers in your project"
-      txtLabel = "Please type " ++ confirmationTriggerText ++ " below to confirm"
-      mockLabel = [ "Do a test run without actually locking the servers.", "Only uncheck this in a real emergency." ]
+  let txtLabel = "Please type " ++ confirmationTriggerText ++ " below to confirm"
+      mockDescription = [ "Do a test run without actually locking the servers.", "Only uncheck this in a real emergency." ]
+      mockLabel = "Test mode"
       mockCheckbox = Input.checkbox [ Element.spacing 15 ]
                                     { onChange = UpdateMockCheckboxMsg
                                     , icon = Input.defaultCheckbox
                                     , checked = model.config.mock
-                                    , label = Input.labelRight [ Element.width fill ]
-                                                << Element.column []
-                                                << List.map (paragraph [] << List.singleton << text)
-                                                <| mockLabel
+                                    , label = Input.labelRight [ Element.width fill ] <| paragraph [] [ text mockLabel ]
                                     }
-      textInput = Input.text [ Font.color (rgb255 0 0 0)
-                             , Element.htmlAttribute << HA.id <| confirmationInputId
+      textInput = Input.text [ Element.htmlAttribute << HA.id <| confirmationInputId
                              , Element.spacing 15
                              ]
                              { onChange = UpdateConfirmTextMsg
@@ -284,19 +318,16 @@ viewConfirm model txt =
       goButton = Input.button [ Border.width 2
                               , Border.solid
                               , Border.rounded 3
-                              , Font.color fontColor
-                              , Border.color black
-                              , Background.color buttonBackgroundColor
+                              , Font.color <| if confirmationTriggered txt then fontColor else grey
+                              , Border.color <| if confirmationTriggered txt then black else grey
                               ]
-                              { onPress = Just ConfirmMsg
+                              { onPress = if confirmationTriggered txt then Just ConfirmMsg else Nothing
                               , label = paragraph [ Element.padding 5 ] [ text "Go!" ]
                               }
-      buttonContainer = el [ Element.below <| if confirmationTriggered txt then goButton else Element.none ] Element.none
   in column [ Element.width fill
             , Element.height fill
             ]
-            [ el [ Element.centerX ] << paragraph [ Font.size 50 ] <| [ text title ]
-            , column [ Element.centerX
+            [ column [ Element.centerX
                      , Element.centerY
                      , Element.spacing 15
                      , Font.size 20
@@ -306,21 +337,23 @@ viewConfirm model txt =
                               , Border.solid
                               , Border.rounded 3
                               , Border.color black
+                              , Element.centerX
+                              , Element.width fill
                               , Element.padding 20
                               , Element.spacing 15
                               ]
                               [ mockCheckbox
                               , textInput
-                              , buttonContainer
+                              , goButton
                               ]
                      ]
             ]
 
-viewProgress : Model -> Progress -> Maybe Url -> Element Msg
-viewProgress model progress maybeUrl =
+viewProgress : Model -> Progress -> Element Msg
+viewProgress model progress =
   let mockParagraph = if model.config.mock
                       then paragraph [] [ text "Beware: you selected "
-                                        , el [ Font.bold ] <| text "test mode"
+                                        , el [ Font.bold, Font.color red ] <| text "test mode"
                                         , text ", no servers will actually be disabled!" ]
                       else Element.none
   in column [ Element.width fill
@@ -336,21 +369,12 @@ viewProgress model progress maybeUrl =
                                  , paragraph [] [ text <| "Locked: "   ++ (printProgress progress .lockingProgress .total) ]
                                  , paragraph [] [ text <| "Verified: " ++ (printProgress progress .verifyingProgress .total) ]
                                  ]
-                     , Maybe.withDefault Element.none << Maybe.map renderImg <| maybeUrl
                      ]
             ]
 
 printProgress : Progress -> (Progress -> Int) -> (Progress -> Int) -> String
 printProgress progress getCount getTotal =
   (String.fromInt << getCount <| progress) ++ "/" ++ (String.fromInt << getTotal <| progress)
-
-renderImg : Url -> Element Msg
-renderImg (Url url) = column [ Element.width fill
-                             , Element.spacing 5 ]
-                             [ paragraph [] [ text "We are done, have a cat." ]
-                             , image [ Element.centerX ]
-                                     { src = url, description = "Funny cat, we're done!" }
-                             ]
 
 printLog : Model -> Element.Attribute Msg
 printLog model = Element.behindContent << Lazy.lazy doPrintLog <| model.log
@@ -363,7 +387,7 @@ doPrintLog msgs =
         , Element.width fill
         , Font.size 10
         ]
-        <| column [Element.alignBottom] logLines
+        <| column [ Element.alignBottom ] logLines
 
 getHostConfig : Cmd Msg
 getHostConfig = Http.get { url = UB.relative ["static", "api", "config"] []
@@ -432,13 +456,5 @@ paramFromTime name time =
 
 statusDecoder : Decoder String
 statusDecoder = J.field "status" J.string
-
-getRandomCatGif : Cmd Msg
-getRandomCatGif = Http.get { url = "https://api.giphy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC&tag=cat"
-                           , expect = Http.expectJson FoundGifMsg gifDecoder
-                           }
-
-gifDecoder : Decoder Url
-gifDecoder = J.field "data" << J.field "image_url" << J.map Url <| J.string
 
 
