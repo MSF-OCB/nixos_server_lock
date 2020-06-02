@@ -315,7 +315,7 @@ viewConfirm model txt =
                              , placeholder = Just << Input.placeholder [] << paragraph [] <| [ text confirmationTriggerText ]
                              , label = Input.labelAbove [] <| paragraph [] [ text txtLabel ]
                              }
-      goButton = Input.button [ Border.width 2
+      goButton = Input.button [ Border.width 1
                               , Border.solid
                               , Border.rounded 3
                               , Font.color <| if confirmationTriggered txt then fontColor else grey
@@ -333,7 +333,7 @@ viewConfirm model txt =
                      , Font.size 20
                      ]
                      [ paragraph [] [ text "<warning about the consequences>" ]
-                     , column [ Border.width 2
+                     , column [ Border.width 1
                               , Border.solid
                               , Border.rounded 3
                               , Border.color black
