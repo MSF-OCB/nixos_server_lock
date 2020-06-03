@@ -60,6 +60,9 @@ black = rgb255 0 0 0
 grey : Element.Color
 grey = rgb255 234 237 243
 
+darkGrey : Element.Color
+darkGrey = rgb255 224 227 233
+
 white : Element.Color
 white = rgb255 255 255 255
 
@@ -298,7 +301,8 @@ viewElement model =
 
 viewConfirm : Model -> String -> Element Msg
 viewConfirm model txt =
-  let textLabel = paragraph [] [ text "Please type "
+  let triggered yes no = if confirmationTriggered txt then yes else no
+      textLabel = paragraph [] [ text "Please type "
                                , el [ Font.bold, Font.color red ] <| text confirmationTriggerText
                                , text " below to confirm"
                                ]
@@ -321,11 +325,12 @@ viewConfirm model txt =
       goButton = Input.button [ Border.width 1
                               , Border.solid
                               , Border.rounded 3
-                              , if confirmationTriggered txt then Font.bold else Font.regular
-                              , Font.color <| if confirmationTriggered txt then red else grey
-                              , Border.color <| if confirmationTriggered txt then black else grey
+                              , triggered Font.bold Font.regular
+                              , Font.color <| triggered red grey
+                              , Border.color <| triggered black grey
+                              , Element.mouseOver [ Background.color <| triggered darkGrey white ]
                               ]
-                              { onPress = if confirmationTriggered txt then Just ConfirmMsg else Nothing
+                              { onPress = triggered (Just ConfirmMsg) Nothing
                               , label = paragraph [ Element.padding 5 ] [ text "Go!" ]
                               }
   in column [ Element.width fill
