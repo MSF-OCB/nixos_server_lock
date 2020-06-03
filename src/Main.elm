@@ -298,7 +298,10 @@ viewElement model =
 
 viewConfirm : Model -> String -> Element Msg
 viewConfirm model txt =
-  let txtLabel = "Please type " ++ confirmationTriggerText ++ " below to confirm"
+  let textLabel = paragraph [] [ text "Please type "
+                               , el [ Font.bold, Font.color red ] <| text confirmationTriggerText
+                               , text " below to confirm"
+                               ]
       mockDescription = [ "Do a test run without actually locking the servers.", "Only uncheck this in a real emergency." ]
       mockLabel = "Test mode"
       mockCheckbox = Input.checkbox [ Element.spacing 15 ]
@@ -313,12 +316,13 @@ viewConfirm model txt =
                              { onChange = UpdateConfirmTextMsg
                              , text = txt
                              , placeholder = Just << Input.placeholder [] << paragraph [] <| [ text confirmationTriggerText ]
-                             , label = Input.labelAbove [] <| paragraph [] [ text txtLabel ]
+                             , label = Input.labelAbove [] textLabel
                              }
       goButton = Input.button [ Border.width 1
                               , Border.solid
                               , Border.rounded 3
-                              , Font.color <| if confirmationTriggered txt then fontColor else grey
+                              , if confirmationTriggered txt then Font.bold else Font.regular
+                              , Font.color <| if confirmationTriggered txt then red else grey
                               , Border.color <| if confirmationTriggered txt then black else grey
                               ]
                               { onPress = if confirmationTriggered txt then Just ConfirmMsg else Nothing
