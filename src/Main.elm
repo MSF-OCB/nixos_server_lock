@@ -270,11 +270,15 @@ view model =
 
 viewElement : Model -> Element Msg
 viewElement model =
-  let title = paragraph [ Font.size 50 ] [ text "MSF server "
-                                         , el [ Font.color red ] <| text "panic button"
-                                         ]
-      titleElement = el [ Element.centerX
-                        , Element.centerY
+  let title = wrappedRow [ width fill
+                         , Font.size 50
+                         , Font.center
+                         ]
+                         [ el [ width fill ] <| text "MSF server "
+                         , el [ width fill, Font.color red ] <| text "panic button"
+                         ]
+      titleElement = el [ centerX
+                        , centerY
                         ]
                         <| title
       mainElement = el [ height fill
