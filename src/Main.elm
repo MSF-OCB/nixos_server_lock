@@ -13,7 +13,11 @@ import SHA256      as SHA
 import Task        as T
 import Time
 
-import Element as Element exposing (Element, el, text, image, paragraph, column, row, fill, rgb255)
+import Element as Element exposing (Element
+                                   , el, text, image, paragraph, column, row, wrappedRow, newTabLink
+                                   , alignBottom, width, height, fill, centerX, centerY, padding, spacing
+                                   , Color, rgb255
+                                   )
 import Element.Background as Background
 import Element.Border     as Border
 import Element.Events     as Events
@@ -55,32 +59,32 @@ confirmationTriggered input = input == confirmationTriggerText
 hostStatusOK : String -> Bool
 hostStatusOK status = status == "OK"
 
-black : Element.Color
+black : Color
 black = rgb255 0 0 0
 
-grey : Element.Color
+grey : Color
 grey = rgb255 234 237 243
 
-darkGrey : Element.Color
+darkGrey : Color
 darkGrey = rgb255 224 227 233
 
-white : Element.Color
+white : Color
 white = rgb255 255 255 255
 
-red : Element.Color
+red : Color
 red = rgb255 238 0 0
 
-backgroundColor : Element.Color
+backgroundColor : Color
 backgroundColor = white
 
-buttonBackgroundColor : Element.Color
+buttonBackgroundColor : Color
 buttonBackgroundColor = white
 
-fontColor : Element.Color
+fontColor : Color
 fontColor = black
 
-azgLogo : Path
-azgLogo = [ "assets", "azg-logo.svg" ]
+msfLogoPath : Path
+msfLogoPath = [ "assets", "azg-logo.svg" ]
 
 type Url  = Url  String
 type Host = Host String
@@ -255,11 +259,12 @@ view model =
       content = viewElement model
   in Element.layoutWith { options = [ Element.focusStyle focusStyle ] }
                         [ Background.color backgroundColor
+                        , Font.size 20
                         , Font.color fontColor
-                        , Element.width fill
-                        , Element.height fill
+                        , width fill
+                        , height fill
                         , Element.scrollbars
-                        , Element.padding 15
+                        , padding 15
                         ]
                         content
 
@@ -272,33 +277,36 @@ viewElement model =
                         , Element.centerY
                         ]
                         <| title
-      mainElement = el [ Element.height <| Element.fill
-                       , Element.width fill
+      mainElement = el [ height fill
+                       , width fill
                        ]
                        <| case model.state of
-                            Init             -> el [ Font.size 30 ] <| text "Loading the app config..."
+                            Init             -> el [] <| text "Loading the app config..."
                             AwaitConfirm txt -> viewConfirm model txt
                             Locking progress -> viewProgress model progress
-      logo = el [ Element.alignBottom
-                , Element.width fill
-                , Element.padding 10
-                ]
-                <| el [ Element.centerX ]
-                      <| image [ Element.height << Element.minimum 50 <| Element.fill
-                               , Element.width fill
-                               , Element.alignBottom
-                               ]
-                               { src = UB.relative azgLogo []
-                               , description = "AZG logo"
-                               }
-  in Element.column [ Element.width fill
-                    , Element.height fill
-                    , printLog model
-                    ]
-                    [ titleElement
-                    , mainElement
-                    , logo
-                    ]
+      msfImage = image [ height << Element.minimum 50 <| fill
+                       , width fill
+                       , alignBottom
+                       ]
+                       { src = UB.relative msfLogoPath []
+                       , description = "MSF logo"
+                       }
+      msfLogo = el [ alignBottom
+                   , width fill
+                   , padding 10
+                   ]
+                   <| newTabLink [ centerX ]
+                                 { url = "https://www.msf-azg.be"
+                                 , label = msfImage
+                                 }
+  in column [ width fill
+            , height fill
+            , printLog model
+            ]
+            [ titleElement
+            , mainElement
+            , msfLogo
+            ]
 
 viewConfirm : Model -> String -> Element Msg
 viewConfirm model txt =
@@ -310,14 +318,14 @@ viewConfirm model txt =
                                ]
       mockDescription = [ "Do a test run without actually locking the servers.", "Only uncheck this in a real emergency." ]
       mockLabel = "Test mode"
-      mockCheckbox = Input.checkbox [ Element.spacing 15 ]
+      mockCheckbox = Input.checkbox [ spacing 15 ]
                                     { onChange = UpdateMockCheckboxMsg
                                     , icon = Input.defaultCheckbox
                                     , checked = model.config.mock
-                                    , label = Input.labelRight [ Element.width fill ] <| paragraph [] [ text mockLabel ]
+                                    , label = Input.labelRight [ width fill ] <| paragraph [] [ text mockLabel ]
                                     }
       textInput = Input.text [ Element.htmlAttribute << HA.id <| confirmationInputId
-                             , Element.spacing 15
+                             , spacing 15
                              , onEnter goAction
                              ]
                              { onChange = UpdateConfirmTextMsg
@@ -334,25 +342,24 @@ viewConfirm model txt =
                               , Element.mouseOver [ Background.color <| ifConfirmed darkGrey white ]
                               ]
                               { onPress = ifConfirmed (Just ConfirmMsg) Nothing
-                              , label = paragraph [ Element.padding 5 ] [ text "Go!" ]
+                              , label = paragraph [ padding 5 ] [ text "Go!" ]
                               }
-  in column [ Element.width fill
-            , Element.height fill
+  in column [ width fill
+            , height fill
             ]
-            [ column [ Element.centerX
-                     , Element.centerY
-                     , Element.spacing 15
-                     , Font.size 20
+            [ column [ centerX
+                     , centerY
+                     , spacing 15
                      ]
                      [ paragraph [] [ text "<warning about the consequences>" ]
                      , column [ Border.width 1
                               , Border.solid
                               , Border.rounded 3
                               , Border.color black
-                              , Element.centerX
-                              , Element.width fill
-                              , Element.padding 20
-                              , Element.spacing 15
+                              , centerX
+                              , width fill
+                              , padding 20
+                              , spacing 15
                               ]
                               [ mockCheckbox
                               , textInput
@@ -377,13 +384,12 @@ viewProgress model progress =
                                         , el [ Font.bold, Font.color red ] <| text "test mode"
                                         , text ", no servers will actually be disabled!" ]
                       else Element.none
-  in column [ Element.width fill
-            , Element.height fill
-            , Font.size 20
+  in column [ width fill
+            , height fill
             ]
-            [ column [ Element.centerX
-                     , Element.centerY
-                     , Element.spacing 15
+            [ column [ centerX
+                     , centerY
+                     , spacing 15
                      ]
                      [ mockParagraph
                      , column [] [ paragraph [] [ text <| "Locking "   ++ (String.fromInt progress.total) ++ " servers." ]
@@ -404,11 +410,11 @@ doPrintLog : List String -> Element Msg
 doPrintLog msgs =
   let formatLine msg = paragraph [] [ text msg ]
       logLines = List.map formatLine <| "Debug log:" :: msgs
-  in el [ Element.height fill
-        , Element.width fill
+  in el [ height fill
+        , width fill
         , Font.size 10
         ]
-        <| column [ Element.alignBottom ] logLines
+        <| column [ alignBottom ] logLines
 
 getHostConfig : Cmd Msg
 getHostConfig = Http.get { url = UB.relative ["static", "api", "config"] []
