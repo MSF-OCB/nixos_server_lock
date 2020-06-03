@@ -28,10 +28,13 @@ import Element.Lazy       as Lazy
 --
 -- TODO items
 --
--- 1. Implement a maximum for the number of retries.
---      -> this might require maintaining a dict in the model containing info per host
 -- 2. Message to inform the user that everything is done
 -- 3. Detailed error messages, this may require a dict like mentioned in item 1
+--
+-- Done
+--
+-- 1. Implement a maximum for the number of retries.
+--      -> this might require maintaining a dict in the model containing info per host
 --
 
 flip : (a -> b -> c) -> b -> a -> c
@@ -43,9 +46,6 @@ main = Browser.document { init = init
                         , subscriptions = subscriptions
                         , view = \model -> { title = "Panic Button", body = [view model] }
                         }
-
-retryDelaySec : Float
-retryDelaySec = 15
 
 confirmationInputId : String
 confirmationInputId = "confirmationInputTextId"
@@ -106,23 +106,35 @@ type alias Model = { state  : ModelState
                    }
 
 type alias Config = { hosts : List Host
+                    , retryDelaySec : Int
+                    , retryMaxCount : Int
                     , mock  : Bool
                     }
+
+type alias AppConfigResponse =
+  { hosts : List Host
+  , retryDelaySec : Int
+  , retryMaxCount : Int
+  }
+
+type alias ProgressState = Int
 
 type alias Progress = { total : Int
                       , lockingProgress  : ProgressState
                       , verifyingProgress: ProgressState
                       }
 
-type alias ProgressState = Int
+type alias RequestContext = { host : Host
+                            , retryCount : Int
+                            }
 
 type alias HttpResult res = Result Http.Error res
 
-type Msg = HostConfigMsg (HttpResult (List Host))
+type Msg = AppConfigMsg (HttpResult AppConfigResponse)
          | ConfirmMsg
-         | LockDoneMsg Host (HttpResult String)
-         | VerifyDoneMsg Host (HttpResult String)
-         | RetryMsg Host (Cmd Msg)
+         | LockDoneMsg RequestContext (HttpResult String)
+         | VerifyDoneMsg RequestContext (HttpResult String)
+         | RetryMsg RequestContext (Cmd Msg)
          | TagRequestMsg (Time.Posix -> Cmd Msg) Time.Posix
          | UpdateConfirmTextMsg String
          | UpdateMockCheckboxMsg Bool
@@ -142,35 +154,42 @@ appendLog model msg = { model | log = model.log ++ [msg] }
 appendLogs : Model -> List String -> Model
 appendLogs = List.foldl <| flip appendLog
 
-updateConfig : Model -> (Config -> Config) -> Model
-updateConfig model doUpdate = { model | config = doUpdate model.config }
+updateConfig : (Config -> Config) -> Model -> Model
+updateConfig doUpdate model = { model | config = doUpdate model.config }
 
 init : () -> (Model, Cmd Msg)
 init _ = (initModel, getHostConfig)
 
 initModel : Model
 initModel = { state  = Init
-            , config = { hosts = [], mock = True }
+            , config = { hosts = []
+                       , retryDelaySec = -1
+                       , retryMaxCount = -1
+                       , mock = True
+                       }
             , log    = []
             }
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case msg of
-  HostConfigMsg hosts          -> (gotHosts model hosts, tryFocus confirmationInputId)
+  AppConfigMsg config          -> (gotAppConfig model config, tryFocus confirmationInputId)
   ConfirmMsg                   -> gotConfirm model
   LockDoneMsg host result      -> gotLockDone model host result
   VerifyDoneMsg host result    -> gotVerifyDone model host result
-  RetryMsg host cmd            -> (appendLog model <| "Retrying: " ++ (fromHost host), cmd)
+  RetryMsg ctxt retryCmd       -> gotRetry model ctxt retryCmd
   TagRequestMsg mkRequest time -> (model, mkRequest time)
   UpdateConfirmTextMsg txt     -> ({ model | state = AwaitConfirm txt }, Cmd.none)
-  UpdateMockCheckboxMsg mock   -> (updateConfig model <| \oldConfig -> { oldConfig | mock = mock }, Cmd.none)
+  UpdateMockCheckboxMsg mock   -> (updateConfig (\oldConfig -> { oldConfig | mock = mock }) model, Cmd.none)
   FocusedMsg id                -> (appendLog model <| "Focused element with id=" ++ id, Cmd.none)
 
-gotHosts : Model -> HttpResult (List Host) -> Model
-gotHosts model res = case res of
-  Ok  hosts -> let addLogs  = flip appendLogs <| "Servers to lock:" :: (List.map fromHost hosts)
-                   setHosts = flip updateConfig <| \oldConfig -> { oldConfig | hosts = hosts }
-               in addLogs << setHosts <| { model | state = AwaitConfirm "" }
+gotAppConfig : Model -> HttpResult AppConfigResponse -> Model
+gotAppConfig model res = case res of
+  Ok  { hosts, retryDelaySec, retryMaxCount } ->
+    let addLogs          = flip appendLogs <| "Servers to lock:" :: (List.map fromHost hosts)
+        setHosts         = updateConfig <| \oldConfig -> { oldConfig | hosts = hosts }
+        setRetryDelay    = updateConfig <| \oldConfig -> { oldConfig | retryDelaySec = retryDelaySec }
+        setRetryMaxCount = updateConfig <| \oldConfig -> { oldConfig | retryMaxCount = retryMaxCount }
+    in addLogs << setRetryDelay << setRetryMaxCount << setHosts <| { model | state = AwaitConfirm "" }
   Err err   -> appendLog model << printError <| err
 
 gotConfirm : Model -> (Model, Cmd Msg)
@@ -184,40 +203,44 @@ gotConfirm model =
   in (addLog << setLocking <| model, doLock model.config)
 
 doLock : Config -> Cmd Msg
-doLock cfg = Cmd.batch << List.map (flip lockServer cfg.mock) <| cfg.hosts
+doLock cfg =
+  let toRequestContext host = { host = host
+                              , retryCount = 0
+                              }
+  in Cmd.batch << List.map (flip lockServer cfg.mock << toRequestContext) <| cfg.hosts
 
-gotLockDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
-gotLockDone model host res =
-  let newCmd   = verifyServer host model.config.mock
-      retryCmd = lockServer   host model.config.mock
+gotLockDone : Model -> RequestContext -> HttpResult String -> (Model, Cmd Msg)
+gotLockDone model ctxt res =
+  let newCmd       = verifyServer ctxt model.config.mock
+      mkRetryCmd c = lockServer   c model.config.mock
       increaseLockingCount progress = { progress | lockingProgress = progress.lockingProgress + 1 }
-  in gotLockingProgress model host res retryCmd "Lock" increaseLockingCount newCmd
+  in gotLockingProgress model ctxt res mkRetryCmd "Lock" increaseLockingCount newCmd
 
-gotVerifyDone : Model -> Host -> HttpResult String -> (Model, Cmd Msg)
-gotVerifyDone model host res =
-  let newCmd   = Cmd.none
-      retryCmd = verifyServer host model.config.mock
+gotVerifyDone : Model -> RequestContext -> HttpResult String -> (Model, Cmd Msg)
+gotVerifyDone model ctxt res =
+  let newCmd       = Cmd.none
+      mkRetryCmd c = verifyServer c model.config.mock
       increaseVerifyingCount progress = { progress | verifyingProgress = progress.verifyingProgress + 1 }
-  in gotLockingProgress model host res retryCmd "Verify" increaseVerifyingCount newCmd
+  in gotLockingProgress model ctxt res mkRetryCmd "Verify" increaseVerifyingCount newCmd
 
 gotLockingProgress : Model ->
-                     Host ->
+                     RequestContext ->
                      HttpResult String ->
-                     Cmd Msg ->
+                     (RequestContext -> Cmd Msg) ->
                      String ->
                      (Progress -> Progress) ->
                      Cmd Msg ->
                      (Model, Cmd Msg)
-gotLockingProgress model host result retryCmd logHeader incrProgress newCmd =
-  let doLog = formatProgressMsg host logHeader
-      doRetry = retry host retryCmd
+gotLockingProgress model ctxt result mkRetryCmd logHeader incrProgress newCmd =
+  let doLog = formatProgressMsg ctxt.host logHeader
+      doRetry m = retry m ctxt mkRetryCmd
       ifOK progress = newProgressModel model progress doLog incrProgress newCmd
-      ifNOK = (appendLog model <| doLog "unsuccessful", doRetry)
+      ifNOK = doRetry (appendLog model <| doLog "unsuccessful")
   in case result of
     Ok  hostStatus -> if hostStatusOK hostStatus
                       then assumeLocking model ifOK
                       else ifNOK
-    Err err        -> progressError model doRetry err doLog
+    Err err        -> doRetry <| progressError model err doLog
 
 assumeLocking : Model -> (Progress -> (Model, Cmd Msg)) -> (Model, Cmd Msg)
 assumeLocking model mkNewModel = case model.state of
@@ -234,15 +257,25 @@ newProgressModel model progress doLog incr newCmd =
   let newModel = { model | state = Locking <| incr progress }
   in (appendLog newModel <| doLog "success", newCmd)
 
-progressError : Model -> Cmd Msg -> Http.Error -> (String -> String) -> (Model, Cmd Msg)
-progressError model retryCmd err doLog =
-  (appendLog model << doLog << printError <| err, retryCmd)
+progressError : Model -> Http.Error -> (String -> String) -> Model
+progressError model err doLog = appendLog model << doLog << printError <| err
 
 formatProgressMsg : Host -> String -> String -> String
-formatProgressMsg host logHeader msg = logHeader ++ ": " ++ (fromHost host) ++ ": " ++ msg
+formatProgressMsg host logHeader msg = logHeader ++ ": " ++ fromHost host ++ ": " ++ msg
 
-retry : Host -> Cmd Msg -> Cmd Msg
-retry host cmd = T.perform (\_ -> RetryMsg host cmd) << P.sleep <| retryDelaySec * 1000
+gotRetry : Model -> RequestContext -> Cmd Msg -> (Model, Cmd Msg)
+gotRetry model ctxt retryCmd =
+  let { host, retryCount } = ctxt
+  in (appendLog model <| "Retrying: " ++ fromHost host ++ ", count: " ++ String.fromInt retryCount, retryCmd)
+
+retry : Model -> RequestContext -> (RequestContext -> Cmd Msg) -> (Model, Cmd Msg)
+retry model ctxt mkRetryCmd =
+  let { host, retryCount } = ctxt
+      newCtxt = { ctxt | retryCount = retryCount + 1 }
+      retryCmd = mkRetryCmd newCtxt
+  in if retryCount < model.config.retryMaxCount
+     then (model, T.perform (\_ -> RetryMsg newCtxt retryCmd) << P.sleep << toFloat <| model.config.retryDelaySec * 1000)
+     else (appendLog model <| "Max retry count reached for host " ++ fromHost host ++ ", giving up", Cmd.none)
 
 tryFocus : String -> Cmd Msg
 tryFocus id = T.attempt (\_ -> FocusedMsg id) <| Dom.focus id
@@ -422,28 +455,32 @@ doPrintLog msgs =
 
 getHostConfig : Cmd Msg
 getHostConfig = Http.get { url = UB.relative ["static", "api", "config"] []
-                         , expect = Http.expectJson HostConfigMsg hostsDecoder
+                         , expect = Http.expectJson AppConfigMsg appConfigDecoder
                          }
 
-hostsDecoder : Decoder (List Host)
-hostsDecoder = J.field "servers" << J.list << J.map Host <| J.string
+appConfigDecoder : Decoder AppConfigResponse
+appConfigDecoder =
+  J.map3 AppConfigResponse
+    (J.field "hosts" << J.list << J.map Host <| J.string)
+    (J.field "retryDelaySec" J.int)
+    (J.field "retryMaxCount" J.int)
 
 -- Tag a request with a key based off the current time
 -- See the paramFromTime function
 tagRequest : (Time.Posix -> Cmd Msg) -> Cmd Msg
 tagRequest mkRequest = T.perform (TagRequestMsg mkRequest) Time.now
 
-lockServer : Host -> Bool -> Cmd Msg
-lockServer host mock = tagRequest <| doLockServer host mock
+lockServer : RequestContext -> Bool -> Cmd Msg
+lockServer ctxt mock = tagRequest <| doLockServer ctxt mock
 
-doLockServer : Host -> Bool -> Time.Posix -> Cmd Msg
-doLockServer host mock time = doLockGet host mock time ["lock"] (LockDoneMsg host)
+doLockServer : RequestContext -> Bool -> Time.Posix -> Cmd Msg
+doLockServer ctxt mock time = doLockGet ctxt.host mock time ["lock"] (LockDoneMsg ctxt)
 
-verifyServer : Host -> Bool -> Cmd Msg
-verifyServer host mock = tagRequest <| doVerifyServer host mock
+verifyServer : RequestContext -> Bool -> Cmd Msg
+verifyServer ctxt mock = tagRequest <| doVerifyServer ctxt mock
 
-doVerifyServer : Host -> Bool -> Time.Posix -> Cmd Msg
-doVerifyServer host mock time = doLockGet host mock time ["verify"] (VerifyDoneMsg host)
+doVerifyServer : RequestContext -> Bool -> Time.Posix -> Cmd Msg
+doVerifyServer ctxt mock time = doLockGet ctxt.host mock time ["verify"] (VerifyDoneMsg ctxt)
 
 -- TODO: only for the testing API from the demo. Replace with doLockPost
 doLockGet : Host -> Bool -> Time.Posix -> Path -> (HttpResult String -> Msg) -> Cmd Msg
