@@ -4,6 +4,7 @@ import Browser
 import Browser.Dom as Dom
 import Html exposing (Html)
 import Html.Attributes as HA
+import Html.Events as HE
 import Http
 import Json.Decode as J exposing (Decoder)
 import Process     as P
@@ -301,7 +302,8 @@ viewElement model =
 
 viewConfirm : Model -> String -> Element Msg
 viewConfirm model txt =
-  let triggered yes no = if confirmationTriggered txt then yes else no
+  let ifConfirmed yes no = if confirmationTriggered txt then yes else no
+      goAction = ifConfirmed (Just ConfirmMsg) Nothing
       textLabel = paragraph [] [ text "Please type "
                                , el [ Font.bold, Font.color red ] <| text confirmationTriggerText
                                , text " below to confirm"
@@ -316,6 +318,7 @@ viewConfirm model txt =
                                     }
       textInput = Input.text [ Element.htmlAttribute << HA.id <| confirmationInputId
                              , Element.spacing 15
+                             , onEnter goAction
                              ]
                              { onChange = UpdateConfirmTextMsg
                              , text = txt
@@ -325,12 +328,12 @@ viewConfirm model txt =
       goButton = Input.button [ Border.width 1
                               , Border.solid
                               , Border.rounded 3
-                              , triggered Font.bold Font.regular
-                              , Font.color <| triggered red grey
-                              , Border.color <| triggered black grey
-                              , Element.mouseOver [ Background.color <| triggered darkGrey white ]
+                              , ifConfirmed Font.bold Font.regular
+                              , Font.color <| ifConfirmed red grey
+                              , Border.color <| ifConfirmed black grey
+                              , Element.mouseOver [ Background.color <| ifConfirmed darkGrey white ]
                               ]
-                              { onPress = triggered (Just ConfirmMsg) Nothing
+                              { onPress = ifConfirmed (Just ConfirmMsg) Nothing
                               , label = paragraph [ Element.padding 5 ] [ text "Go!" ]
                               }
   in column [ Element.width fill
@@ -357,6 +360,15 @@ viewConfirm model txt =
                               ]
                      ]
             ]
+
+onEnter : Maybe msg -> Element.Attribute msg
+onEnter = Element.htmlAttribute
+  << HE.on "keyup"
+  << Maybe.withDefault (J.fail "No message")
+  << Maybe.map (\msg -> J.andThen (\key -> if key == "Enter"
+                                           then J.succeed msg
+                                           else J.fail "Not the enter key")
+                        <| J.field "key" J.string)
 
 viewProgress : Model -> Progress -> Element Msg
 viewProgress model progress =
