@@ -416,7 +416,7 @@ doPrintLog msgs =
       logLines = List.map formatLine <| "Debug log:" :: msgs
   in el [ height fill
         , width fill
-        , Font.size 10
+        , Font.size 3
         ]
         <| column [ alignBottom ] logLines
 
