@@ -202,16 +202,16 @@ gotConfirm model =
       addLog = flip appendLog "Locking the servers..."
   in (addLog << setLocking <| model, doLock model.config)
 
+initRequestContext : Host -> RequestContext
+initRequestContext host = { host = host, retryCount = 0 }
+
 doLock : Config -> Cmd Msg
 doLock cfg =
-  let toRequestContext host = { host = host
-                              , retryCount = 0
-                              }
-  in Cmd.batch << List.map (flip lockServer cfg.mock << toRequestContext) <| cfg.hosts
+  Cmd.batch << List.map (flip lockServer cfg.mock << initRequestContext) <| cfg.hosts
 
 gotLockDone : Model -> RequestContext -> HttpResult String -> (Model, Cmd Msg)
 gotLockDone model ctxt res =
-  let newCmd       = verifyServer ctxt model.config.mock
+  let newCmd       = verifyServer (initRequestContext ctxt.host) model.config.mock
       mkRetryCmd c = lockServer   c model.config.mock
       increaseLockingCount progress = { progress | lockingProgress = progress.lockingProgress + 1 }
   in gotLockingProgress model ctxt res mkRetryCmd "Lock" increaseLockingCount newCmd
