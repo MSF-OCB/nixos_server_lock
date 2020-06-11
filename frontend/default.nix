@@ -43,7 +43,7 @@ let
         ${concatMapStrings build_module targets}
 
         echo "copying assets"
-        cp -r index.html assets static $out
+        cp -r index.html assets $out
       '';
     };
 in mkDerivation {
