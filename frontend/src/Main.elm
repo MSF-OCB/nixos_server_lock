@@ -84,7 +84,7 @@ fontColor : Color
 fontColor = black
 
 msfLogoPath : Path
-msfLogoPath = [ "assets", "azg-logo.svg" ]
+msfLogoPath = [ "static", "assets", "azg-logo.svg" ]
 
 type Url  = Url  String
 type Host = Host String
@@ -454,7 +454,7 @@ doPrintLog msgs =
         <| column [ alignBottom ] logLines
 
 getHostConfig : Cmd Msg
-getHostConfig = Http.get { url = UB.relative ["static", "api", "config"] []
+getHostConfig = Http.get { url = UB.relative ["api", "config"] []
                          , expect = Http.expectJson AppConfigMsg appConfigDecoder
                          }
 
@@ -474,29 +474,28 @@ lockServer : RequestContext -> Bool -> Cmd Msg
 lockServer ctxt mock = tagRequest <| doLockServer ctxt mock
 
 doLockServer : RequestContext -> Bool -> Time.Posix -> Cmd Msg
-doLockServer ctxt mock time = doLockGet ctxt.host mock time ["lock"] (LockDoneMsg ctxt)
+doLockServer ctxt mock time = doPost ctxt.host mock time ["lock"] (LockDoneMsg ctxt)
 
 verifyServer : RequestContext -> Bool -> Cmd Msg
 verifyServer ctxt mock = tagRequest <| doVerifyServer ctxt mock
 
 doVerifyServer : RequestContext -> Bool -> Time.Posix -> Cmd Msg
-doVerifyServer ctxt mock time = doLockGet ctxt.host mock time ["verify"] (VerifyDoneMsg ctxt)
+doVerifyServer ctxt mock time = doGet ctxt.host mock time ["verify"] (VerifyDoneMsg ctxt)
 
--- TODO: only for the testing API from the demo. Replace with doLockPost
-doLockGet : Host -> Bool -> Time.Posix -> Path -> (HttpResult String -> Msg) -> Cmd Msg
-doLockGet host mock time path mkMsg =
-  let queryString = [ UB.string "host" <| fromHost host
-                    , paramFromBool "mock" mock
-                    , paramFromTime "key" time
-                    ]
-      url = UB.relative ([ "static", "api" ] ++ path) queryString
+doGet : Host -> Bool -> Time.Posix -> Path -> (HttpResult String -> Msg) -> Cmd Msg
+doGet host mock time path mkMsg =
+  let url = UB.crossOrigin ("http://" ++ (fromHost host))
+                           ("api" :: path)
+                           [ paramFromBool "mock" mock
+                           , paramFromTime "key" time
+                           ]
   in Http.get { url = url
               , expect = Http.expectJson mkMsg statusDecoder
               }
 
-doLockPost : Host -> Bool -> Time.Posix -> Path -> (HttpResult String -> Msg) -> Cmd Msg
-doLockPost host mock time path mkMsg =
-  let url = UB.crossOrigin ("https://" ++ (fromHost host))
+doPost : Host -> Bool -> Time.Posix -> Path -> (HttpResult String -> Msg) -> Cmd Msg
+doPost host mock time path mkMsg =
+  let url = UB.crossOrigin ("http://" ++ (fromHost host))
                            ("api" :: path)
                            [ paramFromBool "mock" mock
                            , paramFromTime "key" time

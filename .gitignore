@@ -1,4 +1,5 @@
 elm-stuff
 *.swp
 result
+__pycache__
 
