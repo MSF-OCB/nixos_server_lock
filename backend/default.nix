@@ -1,6 +1,6 @@
 { nixpkgs ? import <nixpkgs> {},
   pythonPkgs ? nixpkgs.pkgs.python3Packages,
-  frontendPath
+  frontend
 }:
 
 let
@@ -16,7 +16,7 @@ let
       propagatedBuildInputs = [ flask gevent flask-cors flask-compress ];
 
       postInstall = ''
-        ln -sf ${frontendPath} $out/lib/python3.7/site-packages/msfocb/static
+        ln -sf ${frontend} $out/lib/python3.7/site-packages/msfocb/static
       '';
 
       doCheck = false;

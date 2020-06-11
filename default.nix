@@ -1,6 +1,6 @@
 let
   frontend = import ./frontend {};
-  backend  = import ./backend  { frontendPath = frontend; };
+  backend  = import ./backend  { inherit frontend; };
 in
   backend
 
