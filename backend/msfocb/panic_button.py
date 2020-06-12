@@ -88,7 +88,7 @@ def config() -> Response:
 def lock() -> Response:
   if request.args.get('mock') == 'true':
     print("Mock is set to true, ignoring...")
-    return return_status(True)
+    return return_ok()
   else:
     print("Mock is set to false, locking...")
     p = subprocess.run(args.lock_script.split())
