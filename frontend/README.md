@@ -1,6 +1,6 @@
 To run a development build, run
 ```
-  nix-build --arg production "false"
+  nix build --arg production "false"
 ```
 and to test the result, run a python server serving the resulting `result` directory (which points to the nix store), using
 ```
@@ -9,13 +9,8 @@ and to test the result, run a python server serving the resulting `result` direc
 
 The production build, which also minifies the resulting JS, is done by running just
 ```
-  nix-build
+  nix build
 ```
-To also copy the generated and minified result to the generated directory, to be deployed to github pages, run
-```
-  nix-build && ./copy_generated.sh
-```
-and commit the result.
 
 When changing the Elm dependencies, the Nix build needs to be re-generated using
 ```
