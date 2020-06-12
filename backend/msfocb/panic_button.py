@@ -19,19 +19,27 @@ from gevent.pywsgi import WSGIServer
 # otherwise the request context will not be available when the function
 # is called.
 def key_required(invalid_response: Response):
+  seconds_divisor = 2
   def decorator(wrapped):
+
+    def do_validate_key(request_key, time_input):
+      def go(shift) -> bool:
+        m = hashlib.sha256()
+        m.update(bytes(str(time_input - shift), 'utf-8'))
+        calculated_key = m.hexdigest()
+        return request_key == calculated_key
+      return go
+
     @wraps(wrapped)
     def validate_key(*args, **kwargs):
       request_key = request.args.get('key')
-      time_input = int(time.time()) // 2
-      m = hashlib.sha256()
-      m.update(bytes(str(time_input), 'utf-8'))
-      calculated_key = m.hexdigest()
-      key_valid = (request_key == calculated_key)
-      if request_key == calculated_key:
+      time_input = int(time.time()) // seconds_divisor
+      key_valid = any(map(do_validate_key(request_key, time_input), [0, 1]))
+      if key_valid:
         return wrapped(*args, **kwargs)
       else:
         return invalid_response()
+
     return validate_key
   return decorator
 
