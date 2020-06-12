@@ -320,25 +320,17 @@ gotAppConfig model res =
                 addLogs =
                     flip appendLogs <| "Servers to lock:" :: List.map fromHost hosts
 
-                setHosts =
-                    updateConfig <| \oldConfig -> { oldConfig | hosts = hosts }
-
-                setRetryDelay =
-                    updateConfig <| \oldConfig -> { oldConfig | retryDelaySec = retryDelaySec }
-
-                setLockRetryMaxCount =
-                    updateConfig <| \oldConfig -> { oldConfig | lockRetryMaxCount = lockRetryMaxCount }
-
-                setVerifyRetryMaxCount =
-                    updateConfig <| \oldConfig -> { oldConfig | verifyRetryMaxCount = verifyRetryMaxCount }
+                setFields =
+                    updateConfig <|
+                        \oldConfig ->
+                            { oldConfig
+                                | hosts = hosts
+                                , retryDelaySec = retryDelaySec
+                                , lockRetryMaxCount = lockRetryMaxCount
+                                , verifyRetryMaxCount = verifyRetryMaxCount
+                            }
             in
-            addLogs
-                << setRetryDelay
-                << setVerifyRetryMaxCount
-                << setLockRetryMaxCount
-                << setHosts
-            <|
-                { model | state = AwaitConfirm "" }
+            addLogs << setFields <| { model | state = AwaitConfirm "" }
 
         Err err ->
             appendLog model << printError <| err
@@ -433,11 +425,7 @@ gotLockingProgress model ctxt result mkRetryCmd logHeader incrProgress newCmd =
             doRetry <| progressError model err doLog
 
 
-newProgressModel :
-    Model
-    -> (Progress -> Progress)
-    -> Cmd Msg
-    -> ( Model, Cmd Msg )
+newProgressModel : Model -> (Progress -> Progress) -> Cmd Msg -> ( Model, Cmd Msg )
 newProgressModel model incr newCmd =
     ( { model | progress = incr model.progress }, newCmd )
 
@@ -453,11 +441,7 @@ formatProgressMsg host logHeader msg =
 
 
 gotRetry : Model -> RequestContext -> Cmd Msg -> ( Model, Cmd Msg )
-gotRetry model ctxt retryCmd =
-    let
-        { host, retryCount } =
-            ctxt
-    in
+gotRetry model { host, retryCount } retryCmd =
     ( appendLog model <| "Retrying: " ++ fromHost host ++ ", count: " ++ String.fromInt retryCount, retryCmd )
 
 
@@ -490,6 +474,116 @@ retry model ctxt mkRetryCmd =
 tryFocus : String -> Cmd Msg
 tryFocus id =
     T.attempt (\_ -> FocusedMsg id) <| Dom.focus id
+
+
+getHostConfig : Cmd Msg
+getHostConfig =
+    Http.get
+        { url = UB.relative [ "api", "config" ] []
+        , expect = Http.expectJson AppConfigMsg appConfigDecoder
+        }
+
+
+appConfigDecoder : Decoder AppConfigResponse
+appConfigDecoder =
+    J.map4 AppConfigResponse
+        (J.field "hosts" << J.list << J.map Host <| J.string)
+        (J.field "retryDelaySec" J.int)
+        (J.field "lockRetryMaxCount" J.int)
+        (J.field "verifyRetryMaxCount" J.int)
+
+
+{-| Tag a request with a key based off the current time
+See the paramFromTime function
+-}
+tagRequest : (Time.Posix -> Cmd Msg) -> Cmd Msg
+tagRequest mkRequest =
+    T.perform (TagRequestMsg mkRequest) Time.now
+
+
+lockServer : RequestContext -> Bool -> Cmd Msg
+lockServer ctxt mock =
+    tagRequest <| doLockServer ctxt mock
+
+
+doLockServer : RequestContext -> Bool -> Time.Posix -> Cmd Msg
+doLockServer ctxt mock time =
+    doPost ctxt.host mock time [ "lock" ] (LockDoneMsg ctxt)
+
+
+verifyServer : RequestContext -> Bool -> Cmd Msg
+verifyServer ctxt mock =
+    tagRequest <| doVerifyServer ctxt mock
+
+
+doVerifyServer : RequestContext -> Bool -> Time.Posix -> Cmd Msg
+doVerifyServer ctxt mock time =
+    doGet ctxt.host mock time [ "verify" ] (VerifyDoneMsg ctxt)
+
+
+doGet : Host -> Bool -> Time.Posix -> Path -> (HttpResult String -> Msg) -> Cmd Msg
+doGet host mock time path mkMsg =
+    let
+        url =
+            UB.crossOrigin ("http://" ++ fromHost host)
+                ("api" :: path)
+                [ paramFromBool "mock" mock
+                , paramFromTime "key" time
+                ]
+    in
+    Http.get
+        { url = url
+        , expect = Http.expectJson mkMsg statusDecoder
+        }
+
+
+doPost : Host -> Bool -> Time.Posix -> Path -> (HttpResult String -> Msg) -> Cmd Msg
+doPost host mock time path mkMsg =
+    let
+        url =
+            UB.crossOrigin ("http://" ++ fromHost host)
+                ("api" :: path)
+                [ paramFromBool "mock" mock
+                , paramFromTime "key" time
+                ]
+    in
+    Http.post
+        { url = url
+        , body = Http.emptyBody
+        , expect = Http.expectJson mkMsg statusDecoder
+        }
+
+
+paramFromBool : String -> Bool -> UB.QueryParameter
+paramFromBool name value =
+    UB.string name <|
+        if value then
+            "true"
+
+        else
+            "false"
+
+
+{-| Tag a request with a key based off the current time which can be validated in the backend.
+We divide by 2000 to have windows with a width of 2 seconds in which a request can be send,
+and we can accept requests with a key corresponding to the previous window to avoid
+edge cases when a request is sent right before a new window starts.
+This validation of the key will serve as a basic protection against curious employees.
+-}
+paramFromTime : String -> Time.Posix -> UB.QueryParameter
+paramFromTime name time =
+    UB.string name
+        << SHA.toHex
+        << SHA.fromString
+        << String.fromInt
+    <|
+        Time.posixToMillis time
+            // 2000
+
+
+statusDecoder : Decoder String
+statusDecoder =
+    J.field "status" J.string
 
 
 subscriptions : Model -> Sub Msg
@@ -775,113 +869,3 @@ doPrintLog msgs =
         ]
     <|
         column [ alignBottom ] logLines
-
-
-getHostConfig : Cmd Msg
-getHostConfig =
-    Http.get
-        { url = UB.relative [ "api", "config" ] []
-        , expect = Http.expectJson AppConfigMsg appConfigDecoder
-        }
-
-
-appConfigDecoder : Decoder AppConfigResponse
-appConfigDecoder =
-    J.map4 AppConfigResponse
-        (J.field "hosts" << J.list << J.map Host <| J.string)
-        (J.field "retryDelaySec" J.int)
-        (J.field "lockRetryMaxCount" J.int)
-        (J.field "verifyRetryMaxCount" J.int)
-
-
-{-| Tag a request with a key based off the current time
-See the paramFromTime function
--}
-tagRequest : (Time.Posix -> Cmd Msg) -> Cmd Msg
-tagRequest mkRequest =
-    T.perform (TagRequestMsg mkRequest) Time.now
-
-
-lockServer : RequestContext -> Bool -> Cmd Msg
-lockServer ctxt mock =
-    tagRequest <| doLockServer ctxt mock
-
-
-doLockServer : RequestContext -> Bool -> Time.Posix -> Cmd Msg
-doLockServer ctxt mock time =
-    doPost ctxt.host mock time [ "lock" ] (LockDoneMsg ctxt)
-
-
-verifyServer : RequestContext -> Bool -> Cmd Msg
-verifyServer ctxt mock =
-    tagRequest <| doVerifyServer ctxt mock
-
-
-doVerifyServer : RequestContext -> Bool -> Time.Posix -> Cmd Msg
-doVerifyServer ctxt mock time =
-    doGet ctxt.host mock time [ "verify" ] (VerifyDoneMsg ctxt)
-
-
-doGet : Host -> Bool -> Time.Posix -> Path -> (HttpResult String -> Msg) -> Cmd Msg
-doGet host mock time path mkMsg =
-    let
-        url =
-            UB.crossOrigin ("http://" ++ fromHost host)
-                ("api" :: path)
-                [ paramFromBool "mock" mock
-                , paramFromTime "key" time
-                ]
-    in
-    Http.get
-        { url = url
-        , expect = Http.expectJson mkMsg statusDecoder
-        }
-
-
-doPost : Host -> Bool -> Time.Posix -> Path -> (HttpResult String -> Msg) -> Cmd Msg
-doPost host mock time path mkMsg =
-    let
-        url =
-            UB.crossOrigin ("http://" ++ fromHost host)
-                ("api" :: path)
-                [ paramFromBool "mock" mock
-                , paramFromTime "key" time
-                ]
-    in
-    Http.post
-        { url = url
-        , body = Http.emptyBody
-        , expect = Http.expectJson mkMsg statusDecoder
-        }
-
-
-paramFromBool : String -> Bool -> UB.QueryParameter
-paramFromBool name value =
-    UB.string name <|
-        if value then
-            "true"
-
-        else
-            "false"
-
-
-{-| Tag a request with a key based off the current time which can be validated in the backend.
-We divide by 2000 to have windows with a width of 2 seconds in which a request can be send,
-and we can accept requests with a key corresponding to the previous window to avoid
-edge cases when a request is sent right before a new window starts.
-This validation of the key will serve as a basic protection against curious employees.
--}
-paramFromTime : String -> Time.Posix -> UB.QueryParameter
-paramFromTime name time =
-    UB.string name
-        << SHA.toHex
-        << SHA.fromString
-        << String.fromInt
-    <|
-        Time.posixToMillis time
-            // 2000
-
-
-statusDecoder : Decoder String
-statusDecoder =
-    J.field "status" J.string
