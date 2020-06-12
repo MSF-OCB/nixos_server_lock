@@ -5,7 +5,7 @@ import time
 
 from flask import Flask, Response, request, send_from_directory, jsonify
 from flask_compress import Compress
-from flask_cors import CORS
+from flask_cors import cross_origin
 from functools import wraps
 from gevent.pywsgi import WSGIServer
 
@@ -48,7 +48,6 @@ app = Flask(__name__,
             static_folder = static,
             static_url_path = f"/{static}")
 Compress(app)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 def args_parser():
   parser = argparse.ArgumentParser(description='Disable the encryption key')
@@ -84,6 +83,7 @@ def config() -> Response:
                  })
 
 @app.route('/api/lock', methods=['POST'])
+@cross_origin()
 @key_required(return_nok)
 def lock() -> Response:
   if request.args.get('mock') == 'true':
@@ -95,6 +95,7 @@ def lock() -> Response:
     return return_status(p.returncode == 0)
 
 @app.route('/api/verify', methods=['GET'])
+@cross_origin()
 @key_required(return_nok)
 def verify() -> Response:
   p = subprocess.run(args.verify_script.split())
