@@ -8,14 +8,15 @@ let
   mkDerivation =
     { srcs ? ./elm-srcs.nix
     , src
-    , name
+    , pname
+    , version
     , srcdir ? "./src"
     , targets ? []
     , registryDat ? ./registry.dat
     , production
     }:
     stdenv.mkDerivation {
-      inherit name src;
+      inherit pname version src;
 
       buildInputs = [ elmPackages.elm nodePackages_10_x.uglify-js ];
 
@@ -54,7 +55,8 @@ let
       '';
     };
 in mkDerivation {
-  name = "panic_button_frontend-0.1.0";
+  pname = "panic_button_frontend";
+  version = "0.1.0";
   srcs = ./elm-srcs.nix;
   src = ./.;
   targets = ["Main"];
