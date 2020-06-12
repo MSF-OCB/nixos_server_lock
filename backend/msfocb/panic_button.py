@@ -62,14 +62,14 @@ def args_parser():
 
 args = args_parser().parse_args()
 
-def return_status(status: bool) -> Response:
-  return jsonify({ 'status': ('OK' if status else 'NOK') })
+def return_status(status: str) -> Response:
+  return jsonify({ 'status': status })
 
 def return_ok() -> Response:
-  return return_status(True)
+  return return_status('OK')
 
 def return_nok() -> Response:
-  return return_status(False)
+  return return_status('NOK')
 
 @app.route('/')
 def root() -> Response:
