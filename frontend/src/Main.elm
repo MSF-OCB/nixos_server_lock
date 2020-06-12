@@ -43,17 +43,17 @@ import Url.Builder as UB
 
 
 
---
--- TODO items
---
--- 2. Message to inform the user that everything is done
--- 3. Detailed error messages, this may require a dict like mentioned in item 1
---
--- Done
---
--- 1. Implement a maximum for the number of retries.
---      -> this might require maintaining a dict in the model containing info per host
---
+{-
+   TODO items
+
+   2. Message to inform the user that everything is done
+   3. Detailed error messages, this may require a dict like mentioned in item 1
+
+   Done
+
+   1. Implement a maximum for the number of retries.
+        -> this might require maintaining a dict in the model containing info per host
+-}
 
 
 flip : (a -> b -> c) -> b -> a -> c
@@ -161,12 +161,13 @@ fromHost (Host host) =
 type ModelState
     = Init
     | AwaitConfirm String
-    | Locking Progress
+    | Locking
 
 
 type alias Model =
     { state : ModelState
     , config : Config
+    , progress : Progress
     , log : List String
     }
 
@@ -174,7 +175,8 @@ type alias Model =
 type alias Config =
     { hosts : List Host
     , retryDelaySec : Int
-    , retryMaxCount : Int
+    , lockRetryMaxCount : Int
+    , verifyRetryMaxCount : Int
     , mock : Bool
     }
 
@@ -182,7 +184,8 @@ type alias Config =
 type alias AppConfigResponse =
     { hosts : List Host
     , retryDelaySec : Int
-    , retryMaxCount : Int
+    , lockRetryMaxCount : Int
+    , verifyRetryMaxCount : Int
     }
 
 
@@ -191,15 +194,16 @@ type alias ProgressState =
 
 
 type alias Progress =
-    { total : Int
-    , lockingProgress : ProgressState
+    { lockingProgress : ProgressState
     , verifyingProgress : ProgressState
+    , failed : List ( Host, String )
     }
 
 
 type alias RequestContext =
     { host : Host
     , retryCount : Int
+    , getMaxRetryCount : Model -> Int
     }
 
 
@@ -264,8 +268,14 @@ initModel =
     , config =
         { hosts = []
         , retryDelaySec = -1
-        , retryMaxCount = -1
+        , lockRetryMaxCount = -1
+        , verifyRetryMaxCount = -1
         , mock = True
+        }
+    , progress =
+        { lockingProgress = 0
+        , verifyingProgress = 0
+        , failed = []
         }
     , log = []
     }
@@ -305,7 +315,7 @@ update msg model =
 gotAppConfig : Model -> HttpResult AppConfigResponse -> Model
 gotAppConfig model res =
     case res of
-        Ok { hosts, retryDelaySec, retryMaxCount } ->
+        Ok { hosts, retryDelaySec, lockRetryMaxCount, verifyRetryMaxCount } ->
             let
                 addLogs =
                     flip appendLogs <| "Servers to lock:" :: List.map fromHost hosts
@@ -316,10 +326,19 @@ gotAppConfig model res =
                 setRetryDelay =
                     updateConfig <| \oldConfig -> { oldConfig | retryDelaySec = retryDelaySec }
 
-                setRetryMaxCount =
-                    updateConfig <| \oldConfig -> { oldConfig | retryMaxCount = retryMaxCount }
+                setLockRetryMaxCount =
+                    updateConfig <| \oldConfig -> { oldConfig | lockRetryMaxCount = lockRetryMaxCount }
+
+                setVerifyRetryMaxCount =
+                    updateConfig <| \oldConfig -> { oldConfig | verifyRetryMaxCount = verifyRetryMaxCount }
             in
-            addLogs << setRetryDelay << setRetryMaxCount << setHosts <| { model | state = AwaitConfirm "" }
+            addLogs
+                << setRetryDelay
+                << setVerifyRetryMaxCount
+                << setLockRetryMaxCount
+                << setHosts
+            <|
+                { model | state = AwaitConfirm "" }
 
         Err err ->
             appendLog model << printError <| err
@@ -332,10 +351,11 @@ gotConfirm model =
             { m
                 | state =
                     Locking
-                        { total = List.length m.config.hosts
-                        , lockingProgress = 0
-                        , verifyingProgress = 0
-                        }
+                , progress =
+                    { lockingProgress = 0
+                    , verifyingProgress = 0
+                    , failed = []
+                    }
             }
 
         addLog =
@@ -344,21 +364,21 @@ gotConfirm model =
     ( addLog << setLocking <| model, doLock model.config )
 
 
-initRequestContext : Host -> RequestContext
-initRequestContext host =
-    { host = host, retryCount = 0 }
+initRequestContext : (Config -> Int) -> Host -> RequestContext
+initRequestContext getMaxRetryCount host =
+    { host = host, retryCount = 0, getMaxRetryCount = getMaxRetryCount << .config }
 
 
 doLock : Config -> Cmd Msg
 doLock cfg =
-    Cmd.batch << List.map (flip lockServer cfg.mock << initRequestContext) <| cfg.hosts
+    Cmd.batch << List.map (flip lockServer cfg.mock << initRequestContext .lockRetryMaxCount) <| cfg.hosts
 
 
 gotLockDone : Model -> RequestContext -> HttpResult String -> ( Model, Cmd Msg )
 gotLockDone model ctxt res =
     let
         newCmd =
-            verifyServer (initRequestContext ctxt.host) model.config.mock
+            verifyServer (initRequestContext .verifyRetryMaxCount ctxt.host) model.config.mock
 
         mkRetryCmd c =
             lockServer c model.config.mock
@@ -400,48 +420,26 @@ gotLockingProgress model ctxt result mkRetryCmd logHeader incrProgress newCmd =
 
         doRetry m =
             retry m ctxt mkRetryCmd
-
-        ifOK progress =
-            newProgressModel model progress doLog incrProgress newCmd
-
-        ifNOK =
-            doRetry (appendLog model <| doLog "unsuccessful")
     in
     case result of
         Ok hostStatus ->
             if hostStatusOK hostStatus then
-                assumeLocking model ifOK
+                newProgressModel (appendLog model <| doLog "success") incrProgress newCmd
 
             else
-                ifNOK
+                doRetry (appendLog model <| doLog "unsuccessful")
 
         Err err ->
             doRetry <| progressError model err doLog
 
 
-assumeLocking : Model -> (Progress -> ( Model, Cmd Msg )) -> ( Model, Cmd Msg )
-assumeLocking model mkNewModel =
-    case model.state of
-        Locking progress ->
-            mkNewModel progress
-
-        _ ->
-            ( appendLog model "Model in unexpected state, ignoring...", Cmd.none )
-
-
 newProgressModel :
     Model
-    -> Progress
-    -> (String -> String)
     -> (Progress -> Progress)
     -> Cmd Msg
     -> ( Model, Cmd Msg )
-newProgressModel model progress doLog incr newCmd =
-    let
-        newModel =
-            { model | state = Locking <| incr progress }
-    in
-    ( appendLog newModel <| doLog "success", newCmd )
+newProgressModel model incr newCmd =
+    ( { model | progress = incr model.progress }, newCmd )
 
 
 progressError : Model -> Http.Error -> (String -> String) -> Model
@@ -475,11 +473,18 @@ retry model ctxt mkRetryCmd =
         retryCmd =
             mkRetryCmd newCtxt
     in
-    if retryCount < model.config.retryMaxCount then
+    if retryCount < ctxt.getMaxRetryCount model then
         ( model, T.perform (\_ -> RetryMsg newCtxt retryCmd) << P.sleep << toFloat <| model.config.retryDelaySec * 1000 )
 
     else
-        ( appendLog model <| "Max retry count reached for host " ++ fromHost host ++ ", giving up", Cmd.none )
+        let
+            doLog =
+                formatProgressMsg host "Retry" "max retry count reached, giving up"
+
+            incrProgress progress =
+                { progress | failed = ( host, "This server could not be locked, please contact your IT staff." ) :: progress.failed }
+        in
+        newProgressModel (appendLog model doLog) incrProgress Cmd.none
 
 
 tryFocus : String -> Cmd Msg
@@ -550,8 +555,8 @@ viewElement model =
                     AwaitConfirm txt ->
                         viewConfirm model txt
 
-                    Locking progress ->
-                        viewProgress model progress
+                    Locking ->
+                        viewProgress model
 
         msfImage =
             image
@@ -694,8 +699,8 @@ onEnter =
             )
 
 
-viewProgress : Model -> Progress -> Element Msg
-viewProgress model progress =
+viewProgress : Model -> Element Msg
+viewProgress model =
     let
         mockParagraph =
             if model.config.mock then
@@ -707,29 +712,46 @@ viewProgress model progress =
 
             else
                 Element.none
+
+        failedParagraph ( Host host, msg ) =
+            paragraph []
+                [ text <| host ++ ": "
+                , el [ Font.color red ] <| text msg
+                ]
     in
     column
         [ width fill
         , height fill
         ]
-        [ column
+        [ el
             [ centerX
             , centerY
-            , spacing 15
             ]
-            [ mockParagraph
-            , column []
-                [ paragraph [] [ text <| "Locking " ++ String.fromInt progress.total ++ " servers." ]
-                , paragraph [] [ text <| "Locked: " ++ printProgress progress .lockingProgress .total ]
-                , paragraph [] [ text <| "Verified: " ++ printProgress progress .verifyingProgress .total ]
+          <|
+            column
+                [ Border.width 1
+                , Border.solid
+                , Border.rounded 3
+                , Border.color black
+                , centerX
+                , width fill
+                , padding 20
+                , spacing 15
                 ]
-            ]
+                [ mockParagraph
+                , column [ Font.alignLeft ]
+                    [ paragraph [] [ text <| "Locking " ++ (String.fromInt << List.length <| model.config.hosts) ++ " servers." ]
+                    , paragraph [] [ text <| "Locked: " ++ printProgress model .lockingProgress ]
+                    , paragraph [] [ text <| "Verified: " ++ printProgress model .verifyingProgress ]
+                    ]
+                , column [ Font.size 15 ] <| List.map failedParagraph model.progress.failed
+                ]
         ]
 
 
-printProgress : Progress -> (Progress -> Int) -> (Progress -> Int) -> String
-printProgress progress getCount getTotal =
-    (String.fromInt << getCount <| progress) ++ "/" ++ (String.fromInt << getTotal <| progress)
+printProgress : Model -> (Progress -> Int) -> String
+printProgress model getCount =
+    (String.fromInt << getCount << .progress <| model) ++ "/" ++ (String.fromInt << List.length <| model.config.hosts)
 
 
 printLog : Model -> Element.Attribute Msg
@@ -765,17 +787,16 @@ getHostConfig =
 
 appConfigDecoder : Decoder AppConfigResponse
 appConfigDecoder =
-    J.map3 AppConfigResponse
+    J.map4 AppConfigResponse
         (J.field "hosts" << J.list << J.map Host <| J.string)
         (J.field "retryDelaySec" J.int)
-        (J.field "retryMaxCount" J.int)
+        (J.field "lockRetryMaxCount" J.int)
+        (J.field "verifyRetryMaxCount" J.int)
 
 
-
--- Tag a request with a key based off the current time
--- See the paramFromTime function
-
-
+{-| Tag a request with a key based off the current time
+See the paramFromTime function
+-}
 tagRequest : (Time.Posix -> Cmd Msg) -> Cmd Msg
 tagRequest mkRequest =
     T.perform (TagRequestMsg mkRequest) Time.now
@@ -844,14 +865,12 @@ paramFromBool name value =
             "false"
 
 
-
--- Tag a request with a key based off the current time which can be validated in the backend.
--- We divide by 2000 to have windows with a width of 2 seconds in which a request can be send,
--- and we can accept requests with a key corresponding to the previous window to avoid
--- edge cases when a request is sent right before a new window starts.
--- This validation of the key will serve as a basic protection against curious employees.
-
-
+{-| Tag a request with a key based off the current time which can be validated in the backend.
+We divide by 2000 to have windows with a width of 2 seconds in which a request can be send,
+and we can accept requests with a key corresponding to the previous window to avoid
+edge cases when a request is sent right before a new window starts.
+This validation of the key will serve as a basic protection against curious employees.
+-}
 paramFromTime : String -> Time.Posix -> UB.QueryParameter
 paramFromTime name time =
     UB.string name

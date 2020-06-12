@@ -46,8 +46,9 @@ def args_parser():
   parser = argparse.ArgumentParser(description='Disable the encryption key')
   parser.add_argument('--lock_script',     type=str, required=True, dest='lock_script')
   parser.add_argument('--verify_script',   type=str, required=True, dest='verify_script')
-  parser.add_argument('--retry_max_count', type=str, required=False, default=10, dest='retryMaxCount')
-  parser.add_argument('--poll_interval',   type=str, required=False, default=5, dest='retryDelaySec')
+  parser.add_argument('--lock_retry_max_count', type=int, required=False, default=10, dest='lockRetryMaxCount')
+  parser.add_argument('--verify_retry_max_count', type=int, required=False, default=10, dest='verifyRetryMaxCount')
+  parser.add_argument('--poll_interval',   type=int, required=False, default=5, dest='retryDelaySec')
   parser.add_argument('--disable_targets', type=str, required=True, dest='disable_targets', nargs='*')
   return parser
 
@@ -68,9 +69,10 @@ def root() -> Response:
 
 @app.route('/api/config', methods=['GET'])
 def config() -> Response:
-  return jsonify({ 'hosts': args.disable_targets,
-                   'retryDelaySec': args.retryDelaySec,
-                   'retryMaxCount': args.retryMaxCount
+  return jsonify({ 'hosts': args.disable_targets
+                 , 'retryDelaySec': args.retryDelaySec
+                 , 'lockRetryMaxCount': args.lockRetryMaxCount
+                 , 'verifyRetryMaxCount': args.verifyRetryMaxCount
                  })
 
 @app.route('/api/lock', methods=['POST'])
