@@ -4,7 +4,7 @@ setup (
   name = "nixos_panic_button",
   packages = ["msfocb"],
 #  package_data = {
-#    "msfocb": ["static/*", "templates/*"],
+#    "msfocb": ["static/*"],
 #  },
   entry_points = {
     "console_scripts": [

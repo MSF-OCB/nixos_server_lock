@@ -13,10 +13,10 @@ let
       src = ./.;
 
       # Runtime dependencies
-      propagatedBuildInputs = [ flask gevent flask-cors flask-compress ];
+      propagatedBuildInputs = [ flask flask-compress flask-cors gevent ];
 
       postInstall = ''
-        ln -sf ${frontend} $out/lib/python3.7/site-packages/msfocb/static
+        ln --symbolic ${frontend} $out/${nixpkgs.pkgs.python3.sitePackages}/msfocb/static
       '';
 
       doCheck = false;
