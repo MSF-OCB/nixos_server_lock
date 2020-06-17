@@ -824,6 +824,24 @@ viewProgress model =
                 [ text <| host ++ ": "
                 , el [ Font.color red ] <| text msg
                 ]
+
+        headerParagraph m =
+            let
+                numberOfServers =
+                    List.length m.config.hosts
+            in
+            paragraph []
+                [ text <|
+                    "Locking "
+                        ++ String.fromInt numberOfServers
+                        ++ " server"
+                        ++ (if numberOfServers == 1 then
+                                "."
+
+                            else
+                                "s."
+                           )
+                ]
     in
     column
         [ width fill
@@ -846,7 +864,7 @@ viewProgress model =
                 ]
                 [ mockParagraph
                 , column [ Font.alignLeft ]
-                    [ paragraph [] [ text <| "Locking " ++ (String.fromInt << List.length <| model.config.hosts) ++ " servers." ]
+                    [ headerParagraph model
                     , paragraph [] [ text <| "Locked: " ++ printProgress model .lockingProgress ]
                     , paragraph [] [ text <| "Verified: " ++ printProgress model .verifyingProgress ]
                     ]
