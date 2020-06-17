@@ -89,7 +89,11 @@ def return_nok() -> Response:
   return return_status(False)
 
 def exec_and_return(cmd: str) -> Response:
-  p = subprocess.run(cmd.split())
+  p = subprocess.Popen(cmd.split(),
+                       stdout = subprocess.PIPE,
+                       stderr = subprocess.STDOUT)
+  output, _ = p.communicate()
+  app.logger.info(output.decode('utf-8'))
   return return_status(p.returncode == 0)
 
 def random_response() -> Response:
