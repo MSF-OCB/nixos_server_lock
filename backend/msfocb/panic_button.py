@@ -1,5 +1,6 @@
 import argparse
 import hashlib
+import random
 import subprocess
 import time
 
@@ -87,6 +88,13 @@ def return_ok() -> Response:
 def return_nok() -> Response:
   return return_status(False)
 
+def exec_and_return(cmd: str) -> Response:
+  p = subprocess.run(cmd.split())
+  return return_status(p.returncode == 0)
+
+def random_response() -> Response:
+  return return_status(random.random() * 10 < 3)
+
 @app.route('/')
 def root() -> Response:
   return send_from_directory(static, 'index.html')
@@ -104,19 +112,22 @@ def config() -> Response:
 @key_required(return_nok)
 def lock() -> Response:
   if request.args.get('mock') == 'true':
-    print("Mock is set to true, ignoring...")
-    return return_ok()
+    app.logger.info("Lock: mock is set to true, producing a random response...")
+    return random_response()
   else:
-    print("Mock is set to false, locking...")
-    p = subprocess.run(args.lock_script.split())
-    return return_status(p.returncode == 0)
+    app.logger.info("Lock: mock is set to false, locking...")
+    return exec_and_return(args.lock_script)
 
 @app.route('/api/verify', methods=['GET'])
 @cross_origin()
 @key_required(return_nok)
 def verify() -> Response:
-  p = subprocess.run(args.verify_script.split())
-  return return_status(p.returncode == 0)
+  if request.args.get('mock') == 'true':
+    app.logger.info("Verify: mock is set to true, producing a random response...")
+    return random_response()
+  else:
+    app.logger.info("Verify: mock is set to false, verifying...")
+    return exec_and_return(args.verify_script)
 
 def main():
   http_server = WSGIServer(('', 1234), app)
