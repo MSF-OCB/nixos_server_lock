@@ -525,7 +525,7 @@ doGet : Host -> Bool -> Time.Posix -> Path -> (HttpResult String -> Msg) -> Cmd 
 doGet host mock time path mkMsg =
     let
         url =
-            UB.crossOrigin ("http://" ++ fromHost host)
+            urlBuilder host
                 ("api" :: path)
                 [ paramFromBool "mock" mock
                 , paramFromTime "key" time
@@ -541,7 +541,7 @@ doPost : Host -> Bool -> Time.Posix -> Path -> (HttpResult String -> Msg) -> Cmd
 doPost host mock time path mkMsg =
     let
         url =
-            UB.crossOrigin ("http://" ++ fromHost host)
+            urlBuilder host
                 ("api" :: path)
                 [ paramFromBool "mock" mock
                 , paramFromTime "key" time
@@ -552,6 +552,18 @@ doPost host mock time path mkMsg =
         , body = Http.emptyBody
         , expect = Http.expectJson mkMsg statusDecoder
         }
+
+
+{-| When given the special value "<localhost>" for the hostname, we make a relative request.
+-}
+urlBuilder : Host -> Path -> List UB.QueryParameter -> String
+urlBuilder host =
+    case host of
+        Host "<localhost>" ->
+            UB.relative
+
+        Host hostname ->
+            UB.crossOrigin ("http://" ++ hostname)
 
 
 paramFromBool : String -> Bool -> UB.QueryParameter
