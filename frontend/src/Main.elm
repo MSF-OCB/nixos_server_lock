@@ -136,6 +136,15 @@ msfLogoPath =
     [ "static", "assets", "azg-logo.svg" ]
 
 
+pluralise : String -> Int -> String
+pluralise str num =
+    if num == 1 then
+        str
+
+    else
+        str ++ "s"
+
+
 type Url
     = Url String
 
@@ -834,13 +843,9 @@ viewProgress model =
                 [ text <|
                     "Locking "
                         ++ String.fromInt numberOfServers
-                        ++ " server"
-                        ++ (if numberOfServers == 1 then
-                                "."
-
-                            else
-                                "s."
-                           )
+                        ++ " "
+                        ++ pluralise "server" numberOfServers
+                        ++ "."
                 ]
     in
     column
