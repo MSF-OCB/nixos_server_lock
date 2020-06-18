@@ -1,8 +1,9 @@
 { pkgs ? import <nixpkgs> {} }:
 
 with pkgs;
+with elmPackages;
 
 mkShell {
-  buildInputs = [ elmPackages.elm elmPackages.elm-format ];
+  buildInputs = [ elm elm-format ];
 }
 
