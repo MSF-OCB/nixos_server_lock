@@ -1,15 +1,23 @@
 import argparse
+import flask
 import hashlib
 import random
 import subprocess
 import time
 
-from flask import Flask, Response, request, send_from_directory, jsonify
-from flask_compress import Compress
-from flask_cors import cross_origin
+from flask import Flask, Response, request
+from flask_compress import Compress # type: ignore
+from flask_cors import cross_origin # type: ignore
 from functools import wraps
-from gevent.pywsgi import WSGIServer
+from gevent.pywsgi import WSGIServer # type: ignore
 from logging.config import dictConfig
+from typing import Any, Callable
+
+def jsonify(*args: Any, **kwargs: Any) -> Response:
+  return flask.jsonify(*args, **kwargs) # type: ignore
+
+def send_from_directory(directory: Any, filename: Any, **options: Any) -> Response:
+  return flask.send_from_directory(directory, filename, **options) # type: ignore
 
 dictConfig({
   'version': 1,
@@ -36,12 +44,12 @@ dictConfig({
 # within the decorator and not to call it while defining the decorator,
 # otherwise the request context will not be available when the function
 # is called.
-def key_required(invalid_response: Response):
-  seconds_divisor = 2
-  def decorator(wrapped):
+def key_required(invalid_response: Callable[[], Response]):
+  seconds_divisor: int = 2
+  def decorator(wrapped: Callable[..., Response]):
 
-    def do_validate_key(request_key, time_input):
-      def go(shift) -> bool:
+    def do_validate_key(request_key: str, time_input: int) -> Callable[[int], bool]:
+      def go(shift: int) -> bool:
         m = hashlib.sha256()
         m.update(bytes(str(time_input - shift), 'utf-8'))
         calculated_key = m.hexdigest()
@@ -49,8 +57,8 @@ def key_required(invalid_response: Response):
       return go
 
     @wraps(wrapped)
-    def validate_key(*args, **kwargs):
-      request_key = request.args.get('key')
+    def validate_key(*args, **kwargs) -> Response:
+      request_key = request.args.get('key') or ''
       time_input = int(time.time()) // seconds_divisor
       key_valid = any(map(do_validate_key(request_key, time_input), [0, 1]))
       if key_valid:

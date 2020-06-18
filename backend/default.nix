@@ -6,20 +6,29 @@
 let
   inherit pythonPkgs;
 
-  package = { buildPythonApplication, flask, gevent, flask-cors, flask-compress }:
+  package = { buildPythonApplication, flask, flask-cors, flask-compress, gevent, mypy }:
     buildPythonApplication {
       pname = "panic_button_backend";
       version = "0.1.0";
       src = ./.;
 
-      # Runtime dependencies
+      checkInputs = [ mypy ];
       propagatedBuildInputs = [ flask flask-compress flask-cors gevent ];
 
       postInstall = ''
         ln --symbolic ${frontend} $out/${nixpkgs.pkgs.python3.sitePackages}/msfocb/static
       '';
 
-      doCheck = false;
+      doCheck = true;
+      checkPhase = ''
+        mypy --warn-redundant-casts \
+             --warn-unused-ignores \
+             --warn-no-return \
+             --warn-return-any \
+             --warn-unreachable \
+             --check-untyped-defs \
+             $src/msfocb/
+      '';
 
       meta = {
         description = ''
