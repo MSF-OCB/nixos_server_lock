@@ -77,9 +77,10 @@ Compress(app)
 
 def args_parser():
   parser = argparse.ArgumentParser(description='Disable the encryption key')
+  parser.add_argument('--listen_port',     type=int, required=True, dest='listen_port')
   parser.add_argument('--lock_script',     type=str, required=True, dest='lock_script')
   parser.add_argument('--verify_script',   type=str, required=True, dest='verify_script')
-  parser.add_argument('--lock_retry_max_count', type=int, required=False, default=10, dest='lockRetryMaxCount')
+  parser.add_argument('--lock_retry_max_count',   type=int, required=False, default=10, dest='lockRetryMaxCount')
   parser.add_argument('--verify_retry_max_count', type=int, required=False, default=10, dest='verifyRetryMaxCount')
   parser.add_argument('--poll_interval',   type=int, required=False, default=5, dest='retryDelaySec')
   parser.add_argument('--disable_targets', type=str, required=True, dest='disable_targets', nargs='*')
@@ -142,7 +143,7 @@ def verify() -> Response:
     return exec_and_return(args.verify_script)
 
 def main():
-  http_server = WSGIServer(('', 1234), app)
+  http_server = WSGIServer(('', args.listen_port), app)
   http_server.serve_forever()
 
 if __name__ == '__main__':
