@@ -2,6 +2,7 @@ module Main exposing (main)
 
 import Browser
 import Browser.Dom as Dom
+import Content exposing (explanationText, progressText)
 import Element as Element
     exposing
         ( Color
@@ -14,6 +15,7 @@ import Element as Element
         , fill
         , height
         , image
+        , maximum
         , newTabLink
         , padding
         , paragraph
@@ -35,25 +37,12 @@ import Html.Attributes as HA
 import Html.Events as HE
 import Http
 import Json.Decode as J exposing (Decoder)
+import Markdown as MD
 import Process as P
 import SHA256 as SHA
 import Task as T
 import Time
 import Url.Builder as UB
-
-
-
-{-
-   TODO items
-
-   2. Message to inform the user that everything is done
-   3. Detailed error messages, this may require a dict like mentioned in item 1
-
-   Done
-
-   1. Implement a maximum for the number of retries.
-        -> this might require maintaining a dict in the model containing info per host
--}
 
 
 flip : (a -> b -> c) -> b -> a -> c
@@ -89,6 +78,11 @@ confirmationTriggered input =
 hostStatusOK : String -> Bool
 hostStatusOK status =
     status == "OK"
+
+
+maxWidth : Int
+maxWidth =
+    600
 
 
 black : Color
@@ -639,39 +633,29 @@ view model =
 viewElement : Model -> Element Msg
 viewElement model =
     let
-        title =
+        titleElement =
             wrappedRow
-                [ width fill
+                [ centerX
+                , padding 15
                 , Font.size 50
                 , Font.center
                 ]
+                -- The space behind the first part causes it to be slightly
+                -- off-center on narrow screens when the title is wrapped.
                 [ el [ width fill ] <| text "MSF server "
                 , el [ width fill, Font.color red ] <| text "panic button"
                 ]
 
-        titleElement =
-            el
-                [ centerX
-                , centerY
-                ]
-            <|
-                title
-
         mainElement =
-            el
-                [ height fill
-                , width fill
-                ]
-            <|
-                case model.state of
-                    Init ->
-                        el [] <| text "Loading the app config..."
+            case model.state of
+                Init ->
+                    el [ centerX ] <| text "Loading the app config..."
 
-                    AwaitConfirm txt ->
-                        viewConfirm model txt
+                AwaitConfirm txt ->
+                    viewConfirm model txt
 
-                    Locking ->
-                        viewProgress model
+                Locking ->
+                    viewProgress model
 
         msfImage =
             image
@@ -688,6 +672,7 @@ viewElement model =
                 [ alignBottom
                 , width fill
                 , padding 10
+                , printLog model
                 ]
             <|
                 newTabLink [ centerX ]
@@ -698,12 +683,27 @@ viewElement model =
     column
         [ width fill
         , height fill
-        , printLog model
+        , spacing 15
         ]
         [ titleElement
-        , mainElement
+        , el
+            [ centerX
+            , centerY
+            , width <| maximum maxWidth fill
+            ]
+            mainElement
         , msfLogo
         ]
+
+
+markdownPane : String -> Element Msg
+markdownPane markdownText =
+    paragraph
+        [ centerX
+        , padding 10
+        , Font.justify
+        ]
+        [ Element.html << MD.toHtml [] <| markdownText ]
 
 
 viewConfirm : Model -> String -> Element Msg
@@ -725,9 +725,6 @@ viewConfirm model txt =
                 , el [ Font.bold, Font.color red ] <| text confirmationTriggerText
                 , text " below to confirm"
                 ]
-
-        mockDescription =
-            [ "Do a test run without actually locking the servers.", "Only uncheck this in a real emergency." ]
 
         mockLabel =
             "Test mode"
@@ -766,31 +763,21 @@ viewConfirm model txt =
                 , label = paragraph [ padding 5 ] [ text "Go!" ]
                 }
     in
-    column
-        [ width fill
-        , height fill
-        ]
+    column []
         [ column
-            [ centerX
-            , centerY
+            [ Border.width 1
+            , Border.solid
+            , Border.rounded 3
+            , Border.color black
+            , centerX
+            , padding 20
             , spacing 15
             ]
-            [ paragraph [] [ text "<warning about the consequences>" ]
-            , column
-                [ Border.width 1
-                , Border.solid
-                , Border.rounded 3
-                , Border.color black
-                , centerX
-                , width fill
-                , padding 20
-                , spacing 15
-                ]
-                [ mockCheckbox
-                , textInput
-                , goButton
-                ]
+            [ mockCheckbox
+            , textInput
+            , goButton
             ]
+        , markdownPane explanationText
         ]
 
 
@@ -848,33 +835,25 @@ viewProgress model =
                         ++ "."
                 ]
     in
-    column
-        [ width fill
-        , height fill
-        ]
-        [ el
-            [ centerX
-            , centerY
+    column []
+        [ column
+            [ Border.width 1
+            , Border.solid
+            , Border.rounded 3
+            , Border.color black
+            , centerX
+            , padding 20
+            , spacing 15
             ]
-          <|
-            column
-                [ Border.width 1
-                , Border.solid
-                , Border.rounded 3
-                , Border.color black
-                , centerX
-                , width fill
-                , padding 20
-                , spacing 15
+            [ mockParagraph
+            , column [ Font.alignLeft ]
+                [ headerParagraph model
+                , paragraph [] [ text <| "Locked: " ++ printProgress model .lockingProgress ]
+                , paragraph [] [ text <| "Verified: " ++ printProgress model .verifyingProgress ]
                 ]
-                [ mockParagraph
-                , column [ Font.alignLeft ]
-                    [ headerParagraph model
-                    , paragraph [] [ text <| "Locked: " ++ printProgress model .lockingProgress ]
-                    , paragraph [] [ text <| "Verified: " ++ printProgress model .verifyingProgress ]
-                    ]
-                , column [ Font.size 15 ] <| List.map failedParagraph model.progress.failed
-                ]
+            , column [ Font.size 15 ] <| List.map failedParagraph model.progress.failed
+            ]
+        , markdownPane progressText
         ]
 
 
@@ -900,6 +879,7 @@ doPrintLog msgs =
     el
         [ height fill
         , width fill
+        , padding 5
         , Font.size 3
         ]
     <|

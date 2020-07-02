@@ -5,6 +5,11 @@
         version = "1.1.6";
       };
 
+      "elm-explorations/markdown" = {
+        sha256 = "0k3110ixa4wwf3vkkdplagwah9ypr965qxr1y147rnsc1xsxmr6y";
+        version = "1.0.0";
+      };
+
       "elm/json" = {
         sha256 = "0kjwrz195z84kwywaxhhlnpl3p251qlbm5iz6byd6jky2crmyqyh";
         version = "1.1.3";
