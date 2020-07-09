@@ -27,3 +27,8 @@ progressText : String
 progressText =
     """
 """
+
+
+lockingFailedText : String
+lockingFailedText =
+    "This server could not be locked, please contact your IT staff."

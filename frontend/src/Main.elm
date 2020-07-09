@@ -2,7 +2,7 @@ module Main exposing (main)
 
 import Browser
 import Browser.Dom as Dom
-import Content exposing (explanationText, progressText)
+import Content exposing (explanationText, lockingFailedText, progressText)
 import Element as Element
     exposing
         ( Color
@@ -70,9 +70,9 @@ confirmationTriggerText =
     "YES"
 
 
-confirmationTriggered : String -> Bool
-confirmationTriggered input =
-    input == confirmationTriggerText
+confirmationTriggered : AwaitConfirmState -> Bool
+confirmationTriggered state =
+    state.confirmationTxt == confirmationTriggerText
 
 
 hostStatusOK : String -> Bool
@@ -161,30 +161,11 @@ fromHost (Host host) =
     host
 
 
-type ModelState
-    = Init
-    | AwaitConfirm String
-    | Locking
-
-
-type alias Model =
-    { state : ModelState
-    , config : Config
-    , progress : Progress
-    , log : List String
-    }
+type alias Log =
+    List String
 
 
 type alias Config =
-    { hosts : List Host
-    , retryDelaySec : Int
-    , lockRetryMaxCount : Int
-    , verifyRetryMaxCount : Int
-    , mock : Bool
-    }
-
-
-type alias AppConfigResponse =
     { hosts : List Host
     , retryDelaySec : Int
     , lockRetryMaxCount : Int
@@ -196,17 +177,42 @@ type alias ProgressState =
     Int
 
 
-type alias Progress =
-    { lockingProgress : ProgressState
+type alias AwaitConfirmState =
+    { confirmationTxt : String
+    , log : Log
+    , config : Config
+    , mock : Bool
+    }
+
+
+type alias LockingState =
+    { log : Log
+    , config : Config
+    , mock : Bool
+    , lockingProgress : ProgressState
     , verifyingProgress : ProgressState
     , failed : List ( Host, String )
+    }
+
+
+type Model
+    = Init Log
+    | AwaitConfirm AwaitConfirmState
+    | Locking LockingState
+
+
+type alias AppConfigResponse =
+    { hosts : List Host
+    , retryDelaySec : Int
+    , lockRetryMaxCount : Int
+    , verifyRetryMaxCount : Int
     }
 
 
 type alias RequestContext =
     { host : Host
     , retryCount : Int
-    , getMaxRetryCount : Model -> Int
+    , getMaxRetryCount : LockingState -> Int
     }
 
 
@@ -247,116 +253,100 @@ printError error =
 
 appendLog : Model -> String -> Model
 appendLog model msg =
-    { model | log = model.log ++ [ msg ] }
+    case model of
+        Init log ->
+            Init <| log ++ [ msg ]
+
+        AwaitConfirm state ->
+            AwaitConfirm { state | log = state.log ++ [ msg ] }
+
+        Locking state ->
+            Locking <| appendLogLocking state msg
 
 
-appendLogs : Model -> List String -> Model
-appendLogs =
-    List.foldl <| flip appendLog
-
-
-updateConfig : (Config -> Config) -> Model -> Model
-updateConfig doUpdate model =
-    { model | config = doUpdate model.config }
+appendLogLocking : LockingState -> String -> LockingState
+appendLogLocking state msg =
+    { state | log = state.log ++ [ msg ] }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( initModel, getHostConfig )
-
-
-initModel : Model
-initModel =
-    { state = Init
-    , config =
-        { hosts = []
-        , retryDelaySec = -1
-        , lockRetryMaxCount = -1
-        , verifyRetryMaxCount = -1
-        , mock = True
-        }
-    , progress =
-        { lockingProgress = 0
-        , verifyingProgress = 0
-        , failed = []
-        }
-    , log = []
-    }
+    ( Init [], getHostConfig )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case msg of
-        AppConfigMsg config ->
-            ( gotAppConfig model config, tryFocus confirmationInputId )
+    case ( msg, model ) of
+        ( AppConfigMsg config, Init log ) ->
+            ( gotAppConfig log config, tryFocus confirmationInputId )
 
-        ConfirmMsg ->
-            gotConfirm model
+        ( ConfirmMsg, AwaitConfirm state ) ->
+            gotConfirm state
 
-        LockDoneMsg host result ->
-            gotLockDone model host result
+        ( LockDoneMsg host result, Locking state ) ->
+            gotLockDone state host result
 
-        VerifyDoneMsg host result ->
-            gotVerifyDone model host result
+        ( VerifyDoneMsg host result, Locking state ) ->
+            gotVerifyDone state host result
 
-        RetryMsg ctxt retryCmd ->
-            gotRetry model ctxt retryCmd
+        ( RetryMsg ctxt retryCmd, Locking state ) ->
+            gotRetry state ctxt retryCmd
 
-        TagRequestMsg mkRequest time ->
-            ( model, mkRequest time )
+        ( TagRequestMsg mkRequest time, mdl ) ->
+            ( mdl, mkRequest time )
 
-        UpdateConfirmTextMsg txt ->
-            ( { model | state = AwaitConfirm txt }, Cmd.none )
+        ( UpdateConfirmTextMsg txt, AwaitConfirm state ) ->
+            ( AwaitConfirm { state | confirmationTxt = txt }, Cmd.none )
 
-        UpdateMockCheckboxMsg mock ->
-            ( updateConfig (\oldConfig -> { oldConfig | mock = mock }) model, Cmd.none )
+        ( UpdateMockCheckboxMsg mock, AwaitConfirm state ) ->
+            ( AwaitConfirm { state | mock = mock }, Cmd.none )
 
-        FocusedMsg id ->
-            ( appendLog model <| "Focused element with id=" ++ id, Cmd.none )
+        ( FocusedMsg id, mdl ) ->
+            ( appendLog mdl <| "Focused element with id=" ++ id, Cmd.none )
+
+        ( _, mdl ) ->
+            ( appendLog mdl <| "Ignoring unexpected message", Cmd.none )
 
 
-gotAppConfig : Model -> HttpResult AppConfigResponse -> Model
-gotAppConfig model res =
+gotAppConfig : Log -> HttpResult AppConfigResponse -> Model
+gotAppConfig log res =
     case res of
         Ok { hosts, retryDelaySec, lockRetryMaxCount, verifyRetryMaxCount } ->
             let
-                addLogs =
-                    flip appendLogs <| "Servers to lock:" :: List.map fromHost hosts
+                newLog =
+                    log ++ ("Servers to lock:" :: List.map fromHost hosts)
 
-                setFields =
-                    updateConfig <|
-                        \oldConfig ->
-                            { oldConfig
-                                | hosts = hosts
-                                , retryDelaySec = retryDelaySec
-                                , lockRetryMaxCount = lockRetryMaxCount
-                                , verifyRetryMaxCount = verifyRetryMaxCount
-                            }
+                config =
+                    { hosts = hosts
+                    , retryDelaySec = retryDelaySec
+                    , lockRetryMaxCount = lockRetryMaxCount
+                    , verifyRetryMaxCount = verifyRetryMaxCount
+                    }
             in
-            addLogs << setFields <| { model | state = AwaitConfirm "" }
+            AwaitConfirm
+                { confirmationTxt = ""
+                , log = newLog
+                , config = config
+                , mock = True
+                }
 
         Err err ->
-            appendLog model << printError <| err
+            Init <| log ++ [ printError err ]
 
 
-gotConfirm : Model -> ( Model, Cmd Msg )
-gotConfirm model =
+gotConfirm : AwaitConfirmState -> ( Model, Cmd Msg )
+gotConfirm state =
     let
-        setLocking m =
-            { m
-                | state =
-                    Locking
-                , progress =
-                    { lockingProgress = 0
-                    , verifyingProgress = 0
-                    , failed = []
-                    }
+        newState =
+            { log = state.log ++ [ "Locking the servers..." ]
+            , config = state.config
+            , mock = state.mock
+            , lockingProgress = 0
+            , verifyingProgress = 0
+            , failed = []
             }
-
-        addLog =
-            flip appendLog "Locking the servers..."
     in
-    ( addLog << setLocking <| model, doLock model.config )
+    ( Locking newState, doLock newState )
 
 
 initRequestContext : (Config -> Int) -> Host -> RequestContext
@@ -364,51 +354,55 @@ initRequestContext getMaxRetryCount host =
     { host = host, retryCount = 0, getMaxRetryCount = getMaxRetryCount << .config }
 
 
-doLock : Config -> Cmd Msg
-doLock cfg =
-    Cmd.batch << List.map (flip lockServer cfg.mock << initRequestContext .lockRetryMaxCount) <| cfg.hosts
+doLock : LockingState -> Cmd Msg
+doLock state =
+    Cmd.batch
+        << List.map
+            (flip lockServer state.mock << initRequestContext .lockRetryMaxCount)
+    <|
+        state.config.hosts
 
 
-gotLockDone : Model -> RequestContext -> HttpResult String -> ( Model, Cmd Msg )
-gotLockDone model ctxt res =
+gotLockDone : LockingState -> RequestContext -> HttpResult String -> ( Model, Cmd Msg )
+gotLockDone state ctxt res =
     let
         newCmd =
-            verifyServer (initRequestContext .verifyRetryMaxCount ctxt.host) model.config.mock
+            verifyServer (initRequestContext .verifyRetryMaxCount ctxt.host) state.mock
 
         mkRetryCmd c =
-            lockServer c model.config.mock
+            lockServer c state.mock
 
-        increaseLockingCount progress =
-            { progress | lockingProgress = progress.lockingProgress + 1 }
+        increaseLockingCount st =
+            { st | lockingProgress = st.lockingProgress + 1 }
     in
-    gotLockingProgress model ctxt res mkRetryCmd "Lock" increaseLockingCount newCmd
+    gotLockingProgress state ctxt res mkRetryCmd "Lock" increaseLockingCount newCmd
 
 
-gotVerifyDone : Model -> RequestContext -> HttpResult String -> ( Model, Cmd Msg )
-gotVerifyDone model ctxt res =
+gotVerifyDone : LockingState -> RequestContext -> HttpResult String -> ( Model, Cmd Msg )
+gotVerifyDone state ctxt res =
     let
         newCmd =
             Cmd.none
 
         mkRetryCmd c =
-            verifyServer c model.config.mock
+            verifyServer c state.mock
 
-        increaseVerifyingCount progress =
-            { progress | verifyingProgress = progress.verifyingProgress + 1 }
+        increaseVerifyingCount st =
+            { st | verifyingProgress = st.verifyingProgress + 1 }
     in
-    gotLockingProgress model ctxt res mkRetryCmd "Verify" increaseVerifyingCount newCmd
+    gotLockingProgress state ctxt res mkRetryCmd "Verify" increaseVerifyingCount newCmd
 
 
 gotLockingProgress :
-    Model
+    LockingState
     -> RequestContext
     -> HttpResult String
     -> (RequestContext -> Cmd Msg)
     -> String
-    -> (Progress -> Progress)
+    -> (LockingState -> LockingState)
     -> Cmd Msg
     -> ( Model, Cmd Msg )
-gotLockingProgress model ctxt result mkRetryCmd logHeader incrProgress newCmd =
+gotLockingProgress state ctxt result mkRetryCmd logHeader incrProgress newCmd =
     let
         doLog =
             formatProgressMsg ctxt.host logHeader
@@ -419,23 +413,18 @@ gotLockingProgress model ctxt result mkRetryCmd logHeader incrProgress newCmd =
     case result of
         Ok hostStatus ->
             if hostStatusOK hostStatus then
-                newProgressModel (appendLog model <| doLog "success") incrProgress newCmd
+                ( Locking << incrProgress << appendLogLocking state <| doLog "success", newCmd )
 
             else
-                doRetry (appendLog model <| doLog "unsuccessful")
+                doRetry << appendLogLocking state <| doLog "unsuccessful"
 
         Err err ->
-            doRetry <| progressError model err doLog
+            doRetry <| progressError state err doLog
 
 
-newProgressModel : Model -> (Progress -> Progress) -> Cmd Msg -> ( Model, Cmd Msg )
-newProgressModel model incr newCmd =
-    ( { model | progress = incr model.progress }, newCmd )
-
-
-progressError : Model -> Http.Error -> (String -> String) -> Model
-progressError model err doLog =
-    appendLog model << doLog << printError <| err
+progressError : LockingState -> Http.Error -> (String -> String) -> LockingState
+progressError state err doLog =
+    appendLogLocking state << doLog << printError <| err
 
 
 formatProgressMsg : Host -> String -> String -> String
@@ -443,35 +432,34 @@ formatProgressMsg host logHeader msg =
     logHeader ++ ": " ++ fromHost host ++ ": " ++ msg
 
 
-gotRetry : Model -> RequestContext -> Cmd Msg -> ( Model, Cmd Msg )
-gotRetry model { host, retryCount } retryCmd =
-    ( appendLog model <| "Retrying: " ++ fromHost host ++ ", count: " ++ String.fromInt retryCount, retryCmd )
+gotRetry : LockingState -> RequestContext -> Cmd Msg -> ( Model, Cmd Msg )
+gotRetry state { host, retryCount } retryCmd =
+    ( Locking << appendLogLocking state <| "Retrying: " ++ fromHost host ++ ", count: " ++ String.fromInt retryCount, retryCmd )
 
 
-retry : Model -> RequestContext -> (RequestContext -> Cmd Msg) -> ( Model, Cmd Msg )
-retry model ctxt mkRetryCmd =
-    let
-        { host, retryCount } =
-            ctxt
+retry : LockingState -> RequestContext -> (RequestContext -> Cmd Msg) -> ( Model, Cmd Msg )
+retry state ctxt mkRetryCmd =
+    if ctxt.retryCount < ctxt.getMaxRetryCount state then
+        let
+            newCtxt =
+                { ctxt | retryCount = ctxt.retryCount + 1 }
 
-        newCtxt =
-            { ctxt | retryCount = retryCount + 1 }
-
-        retryCmd =
-            mkRetryCmd newCtxt
-    in
-    if retryCount < ctxt.getMaxRetryCount model then
-        ( model, T.perform (\_ -> RetryMsg newCtxt retryCmd) << P.sleep << toFloat <| model.config.retryDelaySec * 1000 )
+            retryMsg =
+                RetryMsg newCtxt <| mkRetryCmd newCtxt
+        in
+        ( Locking state
+        , T.perform (\_ -> retryMsg) << P.sleep << toFloat <| state.config.retryDelaySec * 1000
+        )
 
     else
         let
-            doLog =
-                formatProgressMsg host "Retry" "max retry count reached, giving up"
+            log =
+                formatProgressMsg ctxt.host "Retry" "max retry count reached, giving up"
 
-            incrProgress progress =
-                { progress | failed = ( host, "This server could not be locked, please contact your IT staff." ) :: progress.failed }
+            addFailed st =
+                { st | failed = ( ctxt.host, lockingFailedText ) :: st.failed }
         in
-        newProgressModel (appendLog model doLog) incrProgress Cmd.none
+        ( Locking << addFailed <| appendLogLocking state log, Cmd.none )
 
 
 tryFocus : String -> Cmd Msg
@@ -642,20 +630,21 @@ viewElement model =
                 ]
                 -- The space behind the first part causes it to be slightly
                 -- off-center on narrow screens when the title is wrapped.
+                -- We could apply padding instead of a space to separate the two sections.
                 [ el [ width fill ] <| text "MSF server "
                 , el [ width fill, Font.color red ] <| text "panic button"
                 ]
 
         mainElement =
-            case model.state of
-                Init ->
+            case model of
+                Init _ ->
                     el [ centerX ] <| text "Loading the app config..."
 
-                AwaitConfirm txt ->
-                    viewConfirm model txt
+                AwaitConfirm state ->
+                    viewConfirm state
 
-                Locking ->
-                    viewProgress model
+                Locking state ->
+                    viewProgress state
 
         msfImage =
             image
@@ -706,11 +695,11 @@ markdownPane markdownText =
         [ Element.html << MD.toHtml [] <| markdownText ]
 
 
-viewConfirm : Model -> String -> Element Msg
-viewConfirm model txt =
+viewConfirm : AwaitConfirmState -> Element Msg
+viewConfirm state =
     let
         ifConfirmed yes no =
-            if confirmationTriggered txt then
+            if confirmationTriggered state then
                 yes
 
             else
@@ -727,14 +716,14 @@ viewConfirm model txt =
                 ]
 
         mockLabel =
-            "Test mode"
+            paragraph [] [ text "Test mode" ]
 
         mockCheckbox =
             Input.checkbox [ spacing 15 ]
                 { onChange = UpdateMockCheckboxMsg
                 , icon = Input.defaultCheckbox
-                , checked = model.config.mock
-                , label = Input.labelRight [ width fill ] <| paragraph [] [ text mockLabel ]
+                , checked = state.mock
+                , label = Input.labelRight [ width fill ] mockLabel
                 }
 
         textInput =
@@ -744,7 +733,7 @@ viewConfirm model txt =
                 , onEnter goAction
                 ]
                 { onChange = UpdateConfirmTextMsg
-                , text = txt
+                , text = state.confirmationTxt
                 , placeholder = Just << Input.placeholder [] << paragraph [] <| [ text confirmationTriggerText ]
                 , label = Input.labelAbove [] textLabel
                 }
@@ -801,11 +790,11 @@ onEnter =
             )
 
 
-viewProgress : Model -> Element Msg
-viewProgress model =
+viewProgress : LockingState -> Element Msg
+viewProgress state =
     let
         mockParagraph =
-            if model.config.mock then
+            if state.mock then
                 paragraph []
                     [ text "Beware: you selected "
                     , el [ Font.bold, Font.color red ] <| text "test mode"
@@ -821,10 +810,10 @@ viewProgress model =
                 , el [ Font.color red ] <| text msg
                 ]
 
-        headerParagraph m =
+        headerParagraph s =
             let
                 numberOfServers =
-                    List.length m.config.hosts
+                    List.length s.config.hosts
             in
             paragraph []
                 [ text <|
@@ -847,24 +836,35 @@ viewProgress model =
             ]
             [ mockParagraph
             , column [ Font.alignLeft ]
-                [ headerParagraph model
-                , paragraph [] [ text <| "Locked: " ++ printProgress model .lockingProgress ]
-                , paragraph [] [ text <| "Verified: " ++ printProgress model .verifyingProgress ]
+                [ headerParagraph state
+                , paragraph [] [ text <| "Locked: " ++ printProgress state .lockingProgress ]
+                , paragraph [] [ text <| "Verified: " ++ printProgress state .verifyingProgress ]
                 ]
-            , column [ Font.size 15 ] <| List.map failedParagraph model.progress.failed
+            , column [ Font.size 15 ] <| List.map failedParagraph state.failed
             ]
         , markdownPane progressText
         ]
 
 
-printProgress : Model -> (Progress -> Int) -> String
-printProgress model getCount =
-    (String.fromInt << getCount << .progress <| model) ++ "/" ++ (String.fromInt << List.length <| model.config.hosts)
+printProgress : LockingState -> (LockingState -> Int) -> String
+printProgress state getCount =
+    (String.fromInt << getCount <| state) ++ "/" ++ (String.fromInt << List.length <| state.config.hosts)
 
 
 printLog : Model -> Element.Attribute Msg
 printLog model =
-    Element.behindContent << Lazy.lazy doPrintLog <| model.log
+    Element.behindContent
+        << Lazy.lazy doPrintLog
+    <|
+        case model of
+            Init log ->
+                log
+
+            AwaitConfirm state ->
+                state.log
+
+            Locking state ->
+                state.log
 
 
 doPrintLog : List String -> Element Msg
