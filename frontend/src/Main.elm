@@ -46,8 +46,8 @@ import Url.Builder as UB
 
 
 flip : (a -> b -> c) -> b -> a -> c
-flip f b a =
-    f a b
+flip f a b =
+    f b a
 
 
 main : Program () Model Msg
