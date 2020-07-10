@@ -35,6 +35,7 @@ import Element as Element
         , paragraph
         , row
         , spacing
+        , spacingXY
         , text
         , width
         , wrappedRow
@@ -590,11 +591,13 @@ viewElement model =
                 , padding 15
                 , Font.size 50
                 , Font.center
+
+                -- We use horizontal spacing to emulate a space character between
+                -- the two parts of the title, a space character would take up space
+                -- when the lines are wrapped, causing the text to appear off-center.
+                , spacingXY 16 0
                 ]
-                -- The space behind the first part causes it to be slightly
-                -- off-center on narrow screens when the title is wrapped.
-                -- We could apply padding instead of a space to separate the two sections.
-                [ el [ width fill ] <| text "MSF server "
+                [ el [ width fill ] <| text "MSF server"
                 , el [ width fill, Font.color red ] <| text "panic button"
                 ]
 
