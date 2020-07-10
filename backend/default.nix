@@ -1,6 +1,7 @@
-{ nixpkgs ? import <nixpkgs> {},
-  pythonPkgs ? nixpkgs.pkgs.python3Packages,
-  frontend
+{ nixpkgs ? import <nixpkgs> {}
+, pythonPkgs ? nixpkgs.pkgs.python3Packages
+, version
+, frontend
 }:
 
 let
@@ -9,7 +10,7 @@ let
   package = { buildPythonApplication, flask, flask-cors, flask-compress, gevent, mypy }:
     buildPythonApplication {
       pname = "panic_button_backend";
-      version = "0.1.0";
+      inherit version;
       src = ./.;
 
       checkInputs = [ mypy ];
