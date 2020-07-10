@@ -371,8 +371,8 @@ gotLockingProgress state ctxt result mkRetryCmd logHeader incrProgress newCmd =
         doLog =
             formatProgressMsg ctxt.host logHeader
 
-        doRetry m =
-            retry m ctxt mkRetryCmd
+        doRetry st =
+            retry st ctxt mkRetryCmd
     in
     case result of
         Ok hostStatus ->
