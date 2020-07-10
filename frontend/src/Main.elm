@@ -2,11 +2,25 @@ module Main exposing (main)
 
 import Browser
 import Browser.Dom as Dom
-import Content exposing (explanationText, lockingFailedText, progressText)
+import Content
+    exposing
+        ( backgroundColor
+        , black
+        , buttonBackgroundColor
+        , confirmationTriggerText
+        , darkGrey
+        , explanationText
+        , fontColor
+        , grey
+        , lockingFailedText
+        , msfLogoPath
+        , progressText
+        , red
+        , white
+        )
 import Element as Element
     exposing
-        ( Color
-        , Element
+        ( Element
         , alignBottom
         , centerX
         , centerY
@@ -19,7 +33,6 @@ import Element as Element
         , newTabLink
         , padding
         , paragraph
-        , rgb255
         , row
         , spacing
         , text
@@ -65,11 +78,6 @@ confirmationInputId =
     "confirmationInputTextId"
 
 
-confirmationTriggerText : String
-confirmationTriggerText =
-    "YES"
-
-
 confirmationTriggered : AwaitConfirmState -> Bool
 confirmationTriggered state =
     state.confirmationTxt == confirmationTriggerText
@@ -83,51 +91,6 @@ hostStatusOK status =
 maxWidth : Int
 maxWidth =
     600
-
-
-black : Color
-black =
-    rgb255 0 0 0
-
-
-grey : Color
-grey =
-    rgb255 234 237 243
-
-
-darkGrey : Color
-darkGrey =
-    rgb255 224 227 233
-
-
-white : Color
-white =
-    rgb255 255 255 255
-
-
-red : Color
-red =
-    rgb255 238 0 0
-
-
-backgroundColor : Color
-backgroundColor =
-    white
-
-
-buttonBackgroundColor : Color
-buttonBackgroundColor =
-    white
-
-
-fontColor : Color
-fontColor =
-    black
-
-
-msfLogoPath : Path
-msfLogoPath =
-    [ "static", "assets", "azg-logo.svg" ]
 
 
 pluralise : String -> Int -> String

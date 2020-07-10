@@ -1,5 +1,12 @@
 module Content exposing (..)
 
+import Element exposing (Color, rgb255)
+
+
+confirmationTriggerText : String
+confirmationTriggerText =
+    "YES"
+
 
 explanationText : String
 explanationText =
@@ -32,3 +39,48 @@ progressText =
 lockingFailedText : String
 lockingFailedText =
     "This server could not be locked, please contact your IT staff."
+
+
+black : Color
+black =
+    rgb255 0 0 0
+
+
+grey : Color
+grey =
+    rgb255 234 237 243
+
+
+darkGrey : Color
+darkGrey =
+    rgb255 224 227 233
+
+
+white : Color
+white =
+    rgb255 255 255 255
+
+
+red : Color
+red =
+    rgb255 238 0 0
+
+
+backgroundColor : Color
+backgroundColor =
+    white
+
+
+buttonBackgroundColor : Color
+buttonBackgroundColor =
+    white
+
+
+fontColor : Color
+fontColor =
+    black
+
+
+msfLogoPath : List String
+msfLogoPath =
+    [ "static", "assets", "azg-logo.svg" ]
