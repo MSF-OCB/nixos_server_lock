@@ -582,23 +582,30 @@ view model =
         content
 
 
+{-| This is the &nbsp; html entity.
+-}
+nonBreakingSpace : String
+nonBreakingSpace =
+    String.fromChar '\u{00A0}'
+
+
+nonBreakingText : List String -> Element Msg
+nonBreakingText =
+    text << String.join nonBreakingSpace
+
+
 viewElement : Model -> Element Msg
 viewElement model =
     let
         titleElement =
-            wrappedRow
+            paragraph
                 [ centerX
                 , padding 15
                 , Font.size 50
                 , Font.center
-
-                -- We use horizontal spacing to emulate a space character between
-                -- the two parts of the title, a space character would take up space
-                -- when the lines are wrapped, causing the text to appear off-center.
-                , spacingXY 16 0
                 ]
-                [ el [ width fill ] <| text "MSF server"
-                , el [ width fill, Font.color red ] <| text "panic button"
+                [ nonBreakingText [ "MSF", "server " ]
+                , el [ Font.color red ] <| nonBreakingText [ "panic", "button" ]
                 ]
 
         mainElement =
