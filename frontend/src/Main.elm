@@ -739,7 +739,7 @@ viewConfirm state =
             , textInput
             , goButton
             ]
-        , markdownPane explanationText
+        , el [ Font.size 15 ] <| markdownPane explanationText
         ]
 
 
@@ -771,7 +771,7 @@ viewProgress state =
                 paragraph []
                     [ text "Beware: you selected "
                     , el [ Font.bold, Font.color red ] <| text "test mode"
-                    , text ", no servers will actually be disabled!"
+                    , text ", no servers will actually be locked!"
                     ]
 
             else
@@ -815,7 +815,7 @@ viewProgress state =
                 ]
             , column [ Font.size 15 ] <| List.map failedParagraph state.failed
             ]
-        , markdownPane progressText
+        , el [ Font.size 15 ] <| markdownPane progressText
         ]
 
 
