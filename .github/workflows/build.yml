@@ -1,7 +1,11 @@
 name: "Build"
 on:
   pull_request:
+    paths-ignore: &IGN_PATHS
+      - 'README.md'
+      - '.gitignore'
   push:
+    paths-ignore: *IGN_PATHS
 jobs:
   build:
     runs-on: ubuntu-latest
