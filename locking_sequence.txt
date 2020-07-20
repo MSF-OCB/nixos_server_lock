@@ -13,27 +13,31 @@ Client->User: Present confirmation screen
 User->Client: Press button to lock the servers
 Client->User: Present progress screen
 
-loop while status != OK
-  Client->Server1: XHR POST: /lock
-  Server1->Client: Lock status
-end
-Client->User: Update locking progress
+par concurrent requests to each target server
 
-loop while status != OK
-  Client->Server2: XHR POST: /lock
-  Server2->Client: Lock status
-end
-Client->User: Update locking progress
+  loop while status != OK
+    Client->Server1: XHR POST: /lock
+    Server1->Client: Lock status
+  end
+  Client->User: Update locking progress
 
-loop while status != OK
-  Client->Server1: XHR GET: /verify
-  Server1->Client: Verify status
-end
-Client->User: Update verification progress
+  loop while status != OK
+    Client->Server2: XHR POST: /lock
+    Server2->Client: Lock status
+  end
+  Client->User: Update locking progress
 
-loop while status != OK
-  Client->Server2: XHR GET: /verify
-  Server2->Client: Verify status
+  loop while status != OK
+    Client->Server1: XHR GET: /verify
+    Server1->Client: Verify status
+  end
+  Client->User: Update verification progress
+
+  loop while status != OK
+    Client->Server2: XHR GET: /verify
+    Server2->Client: Verify status
+  end
+  Client->User: Update verification progress
+
 end
-Client->User: Update verification progress
 
