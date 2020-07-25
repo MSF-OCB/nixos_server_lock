@@ -61,7 +61,7 @@ in mkDerivation {
   pname = "panic_button_frontend";
   inherit version production;
   srcs = ./elm-srcs.nix;
-  src = ./.;
+  src = builtins.path { path = ./.; name = "frontend"; };
   targets = ["Main"];
   srcdir = "./src";
 }

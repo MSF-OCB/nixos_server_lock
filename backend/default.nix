@@ -5,13 +5,12 @@
 }:
 
 let
-  inherit pythonPkgs;
+  pname = "panic_button_backend";
+  src   = builtins.path { path = ./.; name = "backend"; };
 
   package = { buildPythonApplication, flask, flask-cors, flask-compress, gevent, mypy }:
     buildPythonApplication {
-      pname = "panic_button_backend";
-      inherit version;
-      src = ./.;
+      inherit pname version src;
 
       checkInputs = [ mypy ];
       propagatedBuildInputs = [ flask flask-compress flask-cors gevent ];
