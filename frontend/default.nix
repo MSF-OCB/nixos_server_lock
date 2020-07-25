@@ -12,11 +12,9 @@ let
     { srcs ? ./elm-srcs.nix
     , src
     , pname
-    , version
     , srcdir ? "./src"
     , targets ? []
     , registryDat ? ./registry.dat
-    , production
     }:
     stdenv.mkDerivation {
       inherit pname version src;
@@ -58,11 +56,8 @@ let
       '';
     };
 in mkDerivation {
-  pname = "panic_button_frontend";
-  inherit version production;
-  srcs = ./elm-srcs.nix;
-  src = builtins.path { path = ./.; name = "frontend"; };
-  targets = ["Main"];
-  srcdir = "./src";
+  pname   = "panic_button_frontend";
+  src     = builtins.path { path = ./.; name = "frontend"; };
+  targets = [ "Main" ];
 }
 
