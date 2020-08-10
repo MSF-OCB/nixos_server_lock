@@ -20,4 +20,4 @@ jobs:
         with:
           name: panic-button
           signingKey: '${{ secrets.CACHIX_SIGNING_KEY }}'
-      - run: nix-build --arg version "${{ github.sha }}"
+      - run: nix-build --arg version '"${{ github.sha }}"'
