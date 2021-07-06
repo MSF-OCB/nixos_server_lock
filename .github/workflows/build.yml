@@ -1,23 +1,29 @@
 name: "Build"
 on:
   pull_request:
-    paths-ignore:
-      - 'README.md'
-      - '.gitignore'
+    branches:
+      - 'master'
   push:
+    branches:
+      - 'master'
     paths-ignore:
       - 'README.md'
       - '.gitignore'
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+
       - uses: cachix/install-nix-action@master
         with:
           nix_path: nixpkgs=https://nix-channel-redirect.ocb.msf.org/nixexprs.tar.xz
+
       - uses: cachix/cachix-action@master
         with:
           name: panic-button
           signingKey: '${{ secrets.CACHIX_SIGNING_KEY }}'
+
       - run: nix-build --arg version '"${{ github.sha }}"'
+
