@@ -17,7 +17,7 @@ def jsonify(*args: Any, **kwargs: Any) -> Response:
   return flask.jsonify(*args, **kwargs) # type: ignore
 
 def send_from_directory(directory: Any, filename: Any, **options: Any) -> Response:
-  return flask.send_from_directory(directory, filename, **options) # type: ignore
+  return flask.send_from_directory(directory, filename, **options)
 
 dictConfig({
   'version': 1,
