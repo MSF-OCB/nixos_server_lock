@@ -1,5 +1,5 @@
 { nixpkgs ? import <nixpkgs> {}
-, version
+, version ? "dev"
 , production ? true
 }:
 

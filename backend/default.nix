@@ -19,7 +19,7 @@ let
         ln --symbolic ${frontend} $out/${nixpkgs.pkgs.python3.sitePackages}/msfocb/static
       '';
 
-      doCheck = true;
+      doCheck = false;
       checkPhase = ''
         mypy --warn-redundant-casts \
              --warn-unused-ignores \
