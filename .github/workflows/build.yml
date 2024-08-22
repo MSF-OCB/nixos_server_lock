@@ -2,13 +2,13 @@ name: "Build"
 on:
   pull_request:
     branches:
-      - 'master'
+      - "master"
   push:
     branches:
-      - 'master'
+      - "master"
     paths-ignore:
-      - 'README.md'
-      - '.gitignore'
+      - "README.md"
+      - ".gitignore"
 
 jobs:
   build:
@@ -18,12 +18,6 @@ jobs:
 
       - uses: cachix/install-nix-action@master
         with:
-          nix_path: nixpkgs=https://nix-channel-redirect.ocb.msf.org/nixexprs.tar.xz
-
-      - uses: cachix/cachix-action@master
-        with:
-          name: panic-button
-          signingKey: '${{ secrets.CACHIX_SIGNING_KEY }}'
+          nix_path: nixpkgs=channel:nixos-unstable
 
       - run: nix-build --arg version '"${{ github.sha }}"'
-

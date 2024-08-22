@@ -1,14 +1,11 @@
-{ nixpkgs ? import <nixpkgs> {}
-, version ? "dev"
-, production ? true
+{
+  nixpkgs ? import <nixpkgs> { },
+  version ? "dev",
+  production ? true,
 }:
 
-with nixpkgs;
-with lib;
-
 let
-  frontend = import ./frontend { inherit version production; };
-  backend  = import ./backend  { inherit version frontend; };
+  frontend = nixpkgs.callPackage ./frontend { inherit version production; };
+  backend = nixpkgs.callPackage ./backend { inherit version frontend; };
 in
-  backend
-
+backend
