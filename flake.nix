@@ -48,6 +48,7 @@
 
       packages = eachSystem (system: {
         inherit (inputs.self.legacyPackages.${system}.pkgs) panic-button;
+        default = inputs.self.packages.${system}.panic-button;
       });
 
       devShells = eachSystem (
