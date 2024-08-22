@@ -1,15 +1,10 @@
 from setuptools import setup
 
-setup (
-  name = "nixos_panic_button",
-  packages = ["msfocb"],
-#  package_data = {
-#    "msfocb": ["static/*"],
-#  },
-  entry_points = {
-    "console_scripts": [
-      "nixos_panic_button = msfocb.panic_button:main"
-    ]
-  },
+setup(
+    name="nixos_panic_button",
+    packages=["msfocb"],
+    #  package_data = {
+    #    "msfocb": ["static/*"],
+    #  },
+    entry_points={"console_scripts": ["nixos_panic_button = msfocb.panic_button:main"]},
 )
-
