@@ -1,11 +1,11 @@
 {
-  nixpkgs ? import <nixpkgs> { },
+  lib,
   version,
   production ? true,
+  stdenv,
+  elmPackages,
+  nodePackages,
 }:
-
-with nixpkgs;
-with lib;
 
 let
   dist = "dist";
@@ -28,7 +28,7 @@ let
 
       preBuildPhases = [ "setupElmStuffPhase" ];
 
-      setupElmStuffPhase = pkgs.elmPackages.fetchElmDeps {
+      setupElmStuffPhase = elmPackages.fetchElmDeps {
         elmPackages = import srcs;
         elmVersion = "0.19.1";
         inherit registryDat;
@@ -45,7 +45,7 @@ let
             ''
               echo "compiling ${elmfile module}"
               elm make --optimize ${elmfile module} --output ${out_file}
-              ${optionalString production ''
+              ${lib.optionalString production ''
                 echo "minifying ${out_file}"
                 uglifyjs ${out_file} \
                          --compress \
@@ -56,7 +56,7 @@ let
         in
         ''
           mkdir -p ${dist}/
-          ${concatMapStrings (build_module dist) targets}
+          ${lib.concatMapStrings (build_module dist) targets}
         '';
 
       installPhase = ''

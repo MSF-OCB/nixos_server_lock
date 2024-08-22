@@ -15,7 +15,7 @@ from typing import Any, Callable
 
 
 def jsonify(*args: Any, **kwargs: Any) -> Response:
-    return flask.jsonify(*args, **kwargs)  # type: ignore
+    return flask.jsonify(*args, **kwargs)
 
 
 def send_from_directory(directory: Any, filename: Any, **options: Any) -> Response:
