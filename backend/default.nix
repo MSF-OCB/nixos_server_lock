@@ -1,19 +1,36 @@
-{ nixpkgs ? import <nixpkgs> {}
-, pythonPkgs ? nixpkgs.pkgs.python3Packages
-, version
-, frontend
+{
+  nixpkgs ? import <nixpkgs> { },
+  pythonPkgs ? nixpkgs.pkgs.python3Packages,
+  version,
+  frontend,
 }:
 
 let
   pname = "panic_button_backend";
-  src   = builtins.path { path = ./.; name = "backend"; };
+  src = builtins.path {
+    path = ./.;
+    name = "backend";
+  };
 
-  package = { buildPythonApplication, flask, flask-cors, flask-compress, gevent, mypy }:
+  package =
+    {
+      buildPythonApplication,
+      flask,
+      flask-cors,
+      flask-compress,
+      gevent,
+      mypy,
+    }:
     buildPythonApplication {
       inherit pname version src;
 
       checkInputs = [ mypy ];
-      propagatedBuildInputs = [ flask flask-compress flask-cors gevent ];
+      propagatedBuildInputs = [
+        flask
+        flask-compress
+        flask-cors
+        gevent
+      ];
 
       postInstall = ''
         ln --symbolic ${frontend} $out/${nixpkgs.pkgs.python3.sitePackages}/msfocb/static
@@ -37,5 +54,4 @@ let
       };
     };
 in
-  pythonPkgs.callPackage package {}
-
+pythonPkgs.callPackage package { }
