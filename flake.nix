@@ -24,7 +24,7 @@
     in
     {
       overlays.default = final: prev: {
-        panic-button = import ./default.nix {
+        nixos-server-lock = import ./default.nix {
           nixpkgs = final;
           version = inputs.self.sourceInfo.revision or "dev";
         };
@@ -47,8 +47,8 @@
       );
 
       packages = eachSystem (system: {
-        inherit (inputs.self.legacyPackages.${system}.pkgs) panic-button;
-        default = inputs.self.packages.${system}.panic-button;
+        inherit (inputs.self.legacyPackages.${system}.pkgs) nixos-server-lock;
+        default = inputs.self.packages.${system}.nixos-server-lock;
       });
 
       devShells = eachSystem (
@@ -72,7 +72,7 @@
           inherit (inputs.self.legacyPackages.${system}) pkgs;
         in
         {
-          inherit (pkgs) panic-button;
+          inherit (pkgs) nixos-server-lock;
         }
       );
     };

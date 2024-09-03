@@ -18,4 +18,4 @@ jobs:
 
       - uses: cachix/install-nix-action@master
 
-      - run: nix build -vL '.#panic-button'
+      - run: nix build -vL '.#nixos-server-lock'

@@ -6,7 +6,7 @@
 }:
 
 python3.pkgs.buildPythonApplication {
-  pname = "panic_button_backend";
+  pname = "nixos_server_lock_backend";
   src = builtins.path {
     path = ./.;
     name = "backend";
