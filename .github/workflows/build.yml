@@ -16,6 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - uses: cachix/install-nix-action@main
+      - uses: cachix/install-nix-action@master
 
       - run: nix build -vL '.#nixos-server-lock'
