@@ -67,7 +67,7 @@ let
     };
 in
 mkDerivation {
-  pname = "panic_button_frontend";
+  pname = "nixos_server_lock_frontend";
   src = builtins.path {
     path = ./.;
     name = "frontend";

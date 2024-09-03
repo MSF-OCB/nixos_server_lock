@@ -3,7 +3,7 @@ requires = ["flit_core >=3.2,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name = "panic_button"
+name = "nixos_server_lock"
 version = "0.0.0"
 description = ""
 
@@ -17,4 +17,4 @@ find = {}
 msfocb = ["py.typed"]
 
 [project.scripts]
-nixos_panic_button = "msfocb.panic_button:main"
+nixos_server_lock = "msfocb.nixos_server_lock:main"
