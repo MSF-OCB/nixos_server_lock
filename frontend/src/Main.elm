@@ -70,7 +70,7 @@ main =
         { init = init
         , update = update
         , subscriptions = subscriptions
-        , view = \model -> { title = "Panic Button", body = [ view model ] }
+        , view = \model -> { title = "Server Lock Button", body = [ view model ] }
         }
 
 
@@ -605,7 +605,7 @@ viewElement model =
                 , Font.center
                 ]
                 [ nonBreakingText [ "MSF", "server " ]
-                , el [ Font.color red ] <| nonBreakingText [ "panic", "button" ]
+                , el [ Font.color red ] <| nonBreakingText [ "server lock", "button" ]
                 ]
 
         mainElement =

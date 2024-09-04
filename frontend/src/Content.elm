@@ -38,7 +38,7 @@ No data will be lost, but the data will not be readable anymore.
 You can safely try out this procedure by selecting "Test mode".
 In test mode, everything will look as if we are locking the servers during
 a real emergency situation, but we will not actually lock any servers.
-This allows you to try out the panic button and become familiar with
+This allows you to try out the nixos server lock button and become familiar with
 its functioning, without disrupting any services.
 A bit like an evacuation exercise.
 """
