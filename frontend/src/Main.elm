@@ -604,8 +604,8 @@ viewElement model =
                 , Font.size 50
                 , Font.center
                 ]
-                [ nonBreakingText [ "MSF", "server " ]
-                , el [ Font.color red ] <| nonBreakingText [ "nixos server lock", "button" ]
+                [ nonBreakingText [ "MSF", "" ]
+                , el [ Font.color red ] <| nonBreakingText [ "NixOS Server Lock", "Button" ]
                 ]
 
         mainElement =
