@@ -4,7 +4,7 @@
   production ? true,
   stdenv,
   elmPackages,
-  nodePackages,
+  uglify-js,
 }:
 
 let
@@ -23,7 +23,7 @@ let
 
       buildInputs = [
         elmPackages.elm
-        nodePackages.uglify-js
+        uglify-js
       ];
 
       preBuildPhases = [ "setupElmStuffPhase" ];
