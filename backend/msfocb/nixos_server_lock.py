@@ -6,7 +6,6 @@ import subprocess
 import time
 
 from flask import Flask, Response, request
-from flask_compress import Compress
 from flask_cors import cross_origin  # type: ignore
 from functools import wraps
 from gevent.pywsgi import WSGIServer  # type: ignore
@@ -81,7 +80,6 @@ def key_required(invalid_response: Callable[[], Response]):
 
 static = "static"
 app = Flask(__name__, static_folder=static, static_url_path=f"/{static}")
-Compress(app)
 
 
 def args_parser():
