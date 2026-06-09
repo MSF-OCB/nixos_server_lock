@@ -6,7 +6,7 @@ import subprocess
 import time
 
 from flask import Flask, Response, request
-from flask_compress import Compress  # type: ignore
+from flask_compress import Compress
 from flask_cors import cross_origin  # type: ignore
 from functools import wraps
 from gevent.pywsgi import WSGIServer  # type: ignore
